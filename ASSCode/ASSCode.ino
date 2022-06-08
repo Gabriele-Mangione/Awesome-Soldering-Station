@@ -112,8 +112,8 @@ void drawWorkingMode()
 
 void loop()
 {
-  //do once every second
-  if (millis() - timeComparison > 1000)
+  //do ten times per second
+  if (millis() - timeComparison > 100)
   {
     timeComparison = millis();
     // deactivate Output in order to read the temperature
