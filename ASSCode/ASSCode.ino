@@ -35,6 +35,7 @@ TouchScreen ts = TouchScreen(XP, YP, XM, YM, 340); // X+ to X- 340 Ohm
 int actualTemp = 0;
 int goalTemp = 380;
 bool presetsMode = false;
+unsigned long timeComparison = 0;
 
 void setup(void)
 {
@@ -107,19 +108,23 @@ void drawWorkingMode()
 void loop()
 {
   // deactivate Output in order to read the temperature
-  digitalWrite(SOLDER_OD, LOW);
-  // TODO: change 50- 1000
-  actualTemp = map(analogRead(A5), 20, 104, 0, 500);
-
-  // activate Soldering Iron if goalTemp is not yet reached
-  if (actualTemp < goalTemp)
-  {
-    // 71/255 = 25%
-    analogWrite(SOLDER_OD, 71);
-  }
-  else
-  {
+  if (millis() - timeComparison > 1000) {
+    timeComparison = millis();
     digitalWrite(SOLDER_OD, LOW);
+    delay(10);
+    // TODO: change 50- 1000
+    actualTemp = map(analogRead(A5), 0, 1024, 43, 650);
+    delay(1);
+    // activate Soldering Iron if goalTemp is not yet reached
+    if (actualTemp < goalTemp)
+    {
+      // 71/255 = 25%
+      digitalWrite(SOLDER_OD, HIGH);
+    }
+    else
+    {
+      digitalWrite(SOLDER_OD, LOW);
+    }
   }
 
   TSPoint p = ts.getPoint();
