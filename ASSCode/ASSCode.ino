@@ -15,7 +15,7 @@
 #define TFT_DC 9
 
 // Open drain output for soldering iron
-#define SOLDER_OD 6
+#define SOLDER_OD 7
 
 // This is calibration data for the raw touch data to the screen coordinates
 #define TS_MINX 150
@@ -112,8 +112,8 @@ void loop()
     timeComparison = millis();
     // deactivate Output in order to read the temperature
     digitalWrite(SOLDER_OD, LOW);
-    // wait 5 milliseconds to prevent bad measurements
-    delay(5);
+    // wait 1 millisecond to prevent bad measurements
+    delay(1);
     // read the amplified temperature voltage and convert it into temperature
     actualTemp = map(analogRead(A5), 0, 1024, 43, 650);
     // activate Soldering Iron if goalTemp is not yet reached
