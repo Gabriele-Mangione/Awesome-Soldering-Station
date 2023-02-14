@@ -1,6 +1,0 @@
-{
-    "board": "arduino:avr:uno",
-    "programmer": "arduino:arduinoisp",
-    "port": "COM4",
-    "sketch": "ASSCode.ino"
-}
