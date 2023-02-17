@@ -37,13 +37,16 @@
 
 #include <SPI.h>
 #include <TFT_eSPI.h> // Hardware-specific library
-#include <TouchScreen.h>
+#include "TouchBreakout.h"
 
 #define TFT_GREY 0x5AEB
 
 TFT_eSPI tft = TFT_eSPI();       // Invoke custom library
 
-TouchScreen ts = TouchScreen(XP, YP, XM, YM, 340); // X+ to X- 340 Ohm
+TouchPoint TouchScreen = TouchPoint(XP, YP, XM, YM);
+
+//for adafruit touchscreen library
+//TouchScreen ts = TouchScreen(XP, YP, XM, YM, 340); // X+ to X- 340 Ohm
 
 float sx = 0, sy = 1, mx = 1, my = 0, hx = -1, hy = 0;    // Saved H, M, S x & y multipliers
 float sdeg=0, mdeg=0, hdeg=0;
@@ -112,8 +115,10 @@ void setup(void) {
 
 void loop() {
 
-  TSPoint p = ts.getPoint();
-  Serial.printf("x: %i, y: %i\n", p.x, p.y);
+  //TSPoint p = ts.getPoint();
+  uint16_t x = TouchScreen.getX();
+  uint16_t y = TouchScreen.getY();
+  Serial.printf("x: %i, y: %i\n", x, y);
 
   if (targetTime < millis()) {
     targetTime += 1000;
