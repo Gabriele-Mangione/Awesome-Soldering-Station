@@ -5,7 +5,7 @@
 #include <Arduino.h>
 
 #define NUMBER_OF_MEASUREMENTS 10
-#define MAX_SWING_ACCURACY 10
+#define MAX_SWING_ACCURACY 100
 
 
 class TouchPoint {

@@ -23,7 +23,7 @@ uint16_t TouchPoint::max(uint16_t* measurementsArray) {
 }
 
 uint16_t TouchPoint::average(uint16_t* measurementsArray) {
-uint16_t out = 0;
+  uint16_t out = 0;
   for (uint8_t i = 0; i < NUMBER_OF_MEASUREMENTS; i++) {
     out += measurementsArray[i];
   }
@@ -45,13 +45,14 @@ uint16_t TouchPoint::getX() {
   pinMode(xmPin, OUTPUT);
   digitalWrite(xpPin, HIGH);
   digitalWrite(xmPin, LOW);
-
+  delayMicroseconds(50);
   uint16_t Xmeasured[NUMBER_OF_MEASUREMENTS] = { 0 };
   for (uint8_t i = 0; i < NUMBER_OF_MEASUREMENTS; i++) {
     Xmeasured[i] = analogRead(ypPin);
+    delayMicroseconds(5);
   }
 
-  if(max(Xmeasured) - min(Xmeasured) < MAX_SWING_ACCURACY){
+  if (max(Xmeasured) - min(Xmeasured) < MAX_SWING_ACCURACY) {
     return average(Xmeasured);
   }
   return 0;
@@ -64,13 +65,14 @@ uint16_t TouchPoint::getY() {
   pinMode(xmPin, INPUT);
   digitalWrite(ypPin, HIGH);
   digitalWrite(ymPin, LOW);
-
+  delayMicroseconds(50);
   uint16_t Ymeasured[NUMBER_OF_MEASUREMENTS] = { 0 };
   for (uint8_t i = 0; i < NUMBER_OF_MEASUREMENTS; i++) {
     Ymeasured[i] = analogRead(xmPin);
+    delayMicroseconds(5);
   }
 
-  if(max(Ymeasured) - min(Ymeasured) < MAX_SWING_ACCURACY){
+  if (max(Ymeasured) - min(Ymeasured) < MAX_SWING_ACCURACY) {
     return average(Ymeasured);
   }
   return 0;
