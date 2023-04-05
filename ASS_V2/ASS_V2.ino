@@ -44,9 +44,6 @@
 TaskHandle_t SolderTask;
 TaskHandle_t WiFiTask;
 
-TFT_eSPI tft = TFT_eSPI();
-TouchPoint TouchScreen = TouchPoint(XP, YP, XM, YM);
-
 //for adafruit touchscreen library
 //TouchScreen ts = TouchScreen(XP, YP, XM, YM, 340); // X+ to X- 340 Ohm
 
@@ -58,6 +55,12 @@ void setup(void) {
 }
 
 void SolderProcess(void* pvParameters) {
+  TFT_eSPI tft = TFT_eSPI();
+  TouchPoint TouchScreen = TouchPoint(XP, YP, XM, YM);
+
+  Button AugButton(&tft, );
+  Button DecButton(&tft, );
+
   pinMode(SOLDERTEMP_PIN, INPUT);
   pinMode(SOLDER_OD, OUTPUT);
 
@@ -73,36 +76,51 @@ void SolderProcess(void* pvParameters) {
 
   tft.setTextColor(TFT_WHITE, TFT_GREY);  // Adding a background colour erases previous text automatically
 
-  unsigned long solderTime = millis();
-  unsigned long displayTime = millis();
+  unsigned long solderTime = 0;
+  unsigned long displayTime = 0;
   uint8_t goalTemp = 380;
+
   while (true) {
+    if (millis() - displayTime > 10) {  //100 fps, every 10 ms
+      displayTime = millis();
+      uint16_t x = TouchScreen.getX();
+      uint16_t y = TouchScreen.getY();
 
-    if (millis() - solderTime > 50) {
-      solderTime = millis();
-      // deactivate Output in order to read the temperature
-      digitalWrite(SOLDER_OD, LOW);
-      // wait 10 microseconds to prevent bad measurements
-      delayMicroseconds(10);
-      // read the amplified temperature voltage and convert it into temperature
-      uint8_t actualTemp = map(analogRead(SOLDERTEMP_PIN), 0, 4095, 43, 650);
-      // activate Soldering Iron if goalTemp is not yet reached
-      if (actualTemp < goalTemp) {
-        digitalWrite(SOLDER_OD, HIGH);
+      if (AugButton.isPressed(x, y)) {
+        AugButton.setColor(...);
+        goalTemp++;
       } else {
-        digitalWrite(SOLDER_OD, LOW);
+        AugButton.setColor(...);
       }
-    }
 
-    uint16_t x = TouchScreen.getX();
-    uint16_t y = TouchScreen.getY();
+      if (DecButton.isPressed(x, y)) {
+        DecButton.setColor(...);
+        goalTemp--;
+      } else {
+        DecButton.setColor(...);
+      }
 
-    if (millis() - displayTime > 30) {  //33 fps, every 30 ms
       tft.setCursor(0, 10);
       tft.print("x: ");
       tft.println(x);
       tft.print("y: ");
       tft.println(y);
+    }
+  }
+
+  if (millis() - solderTime > 50) {
+    solderTime = millis();
+    // deactivate Output in order to read the temperature
+    digitalWrite(SOLDER_OD, LOW);
+    // wait 10 microseconds to prevent bad measurements
+    delayMicroseconds(10);
+    // read the amplified temperature voltage and convert it into temperature
+    uint8_t actualTemp = map(analogRead(SOLDERTEMP_PIN), 0, 4095, 43, 650);
+    // activate Soldering Iron if goalTemp is not yet reached
+    if (actualTemp < goalTemp) {
+      digitalWrite(SOLDER_OD, HIGH);
+    } else {
+      digitalWrite(SOLDER_OD, LOW);
     }
   }
 }
@@ -156,4 +174,34 @@ void WiFiProcess(void* pvParameters) {
   }
 }
 
-void loop() {}
+class Button {
+private:
+  uint16_t x;
+  uint16_t y;
+  uint16_t w;
+  uint16_t h;
+  uint16_t r;
+  uint16_t colour;
+  TFT_eSPI* tft = NULL;
+
+public:
+  Button(TFT_eSPI* _tft, uint16_t _x, uint16_t _y, uint16_t _w, uint16_t _h, uint16_t _r) {
+    tft = _tft;
+    x = _x;
+    y = _y;
+    w = _w;
+    h = _h;
+    r = _r;
+  }
+
+  void setColor(uint16_t _colour) {
+    if (colour != _colour) {
+      tft.fillRoundRect(x, y, w, h, r, _colour);
+      colour = _colour;
+    }
+  }
+
+  bool isPressed(uint8_t _x, uint8_t _y) {
+    return _x > x && _x < (x + w) && _y > y && _y < (y + h);
+  }
+}
