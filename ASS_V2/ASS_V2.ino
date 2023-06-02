@@ -84,17 +84,17 @@ void SolderProcess(void* pvParameters) {
       uint16_t y = TouchScreen.getY();
 
       if (AugButton.isPressed(x, y)) {
-        AugButton.setColor(...);
+        AugButton.setColor(TFT_GREENYELLOW);
         goalTemp++;
       } else {
-        AugButton.setColor(...);
+        AugButton.setColor(TFT_GREEN);
       }
 
       if (DecButton.isPressed(x, y)) {
-        DecButton.setColor(...);
+        DecButton.setColor(TFT_RED);
         goalTemp--;
       } else {
-        DecButton.setColor(...);
+        DecButton.setColor(TFT_ORANGE);
       }
 
       tft.setCursor(0, 10);
@@ -103,21 +103,21 @@ void SolderProcess(void* pvParameters) {
       tft.print("y: ");
       tft.println(y);
     }
-  }
 
-  if (millis() - solderTime > 50) {
-    solderTime = millis();
-    // deactivate Output in order to read the temperature
-    digitalWrite(SOLDER_OD, LOW);
-    // wait 10 microseconds to prevent bad measurements
-    delayMicroseconds(10);
-    // read the amplified temperature voltage and convert it into temperature
-    uint8_t actualTemp = map(analogRead(SOLDERTEMP_PIN), 0, 4095, 43, 650);
-    // activate Soldering Iron if goalTemp is not yet reached
-    if (actualTemp < goalTemp) {
-      digitalWrite(SOLDER_OD, HIGH);
-    } else {
+    if (millis() - solderTime > 50) {
+      solderTime = millis();
+      // deactivate Output in order to read the temperature
       digitalWrite(SOLDER_OD, LOW);
+      // wait 10 microseconds to prevent bad measurements
+      delayMicroseconds(10);
+      // read the amplified temperature voltage and convert it into temperature
+      uint8_t actualTemp = map(analogRead(SOLDERTEMP_PIN), 0, 4095, 43, 650);
+      // activate Soldering Iron if goalTemp is not yet reached
+      if (actualTemp < goalTemp) {
+        digitalWrite(SOLDER_OD, HIGH);
+      } else {
+        digitalWrite(SOLDER_OD, LOW);
+      }
     }
   }
 }
@@ -126,13 +126,13 @@ void WiFiProcess(void* pvParameters) {
   //WiFi Setup
   WiFi.mode(WIFI_STA);
   WiFi.begin(SSID_WIFI, PW_WIFI);
-  Serial.print("Connecting to WiFi");
+  //Serial.print("Connecting to WiFi");
 
   while (WiFi.status() != WL_CONNECTED) {
-    Serial.print(".");
+    //Serial.print(".");
     delay(1000);
   }
-  Serial.print("\nConnected!");
+  //Serial.print("\nConnected!");
 
   //OTA Setup
   ArduinoOTA.setHostname("AwesomeSolderingStation");
@@ -170,6 +170,8 @@ void WiFiProcess(void* pvParameters) {
     ArduinoOTA.handle();
   }
 }
+
+void loop(){}
 
 class Button {
 private:
