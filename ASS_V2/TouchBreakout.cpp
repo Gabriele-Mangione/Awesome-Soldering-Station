@@ -52,7 +52,7 @@ uint16_t TouchPoint::getX() {
     delayMicroseconds(5);
   }
 
-  if (max(Xmeasured) - min(Xmeasured) < MAX_SWING_ACCURACY) {
+  if (max(Xmeasured) - min(Xmeasured) < MAX_SWING_ACCURACY_X) {
     return average(Xmeasured);
   }
   return 0;
@@ -72,7 +72,7 @@ uint16_t TouchPoint::getY() {
     delayMicroseconds(5);
   }
 
-  if (max(Ymeasured) - min(Ymeasured) < MAX_SWING_ACCURACY) {
+  if (max(Ymeasured) - min(Ymeasured) < MAX_SWING_ACCURACY_Y) {
     return average(Ymeasured);
   }
   return 0;

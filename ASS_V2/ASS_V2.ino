@@ -29,14 +29,13 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 
-const char* ssid = /*"UPC14A647F"*/ "Coldspot";
-const char* password = /*"wyruhcm5yXkQ"*/ "Hotstoppassword";
+#define SSID_WIFI "Coldspot"
+#define PW_WIFI "Hotstoppassword"
 
 #define YP 1
 #define YM 14
 #define XP 13
 #define XM 2
-#define TFT_GREY 0x5AEB
 
 
 #define SOLDERTEMP_PIN 8
@@ -48,7 +47,7 @@ TouchPoint TouchScreen = TouchPoint(XP, YP, XM, YM);
 
 //for adafruit touchscreen library
 //TouchScreen ts = TouchScreen(XP, YP, XM, YM, 340); // X+ to X- 340 Ohm
-
+/*
 float sx = 0, sy = 1, mx = 1, my = 0, hx = -1, hy = 0;  // Saved H, M, S x & y multipliers
 float sdeg = 0, mdeg = 0, hdeg = 0;
 uint16_t osx = 120, osy = 120, omx = 120, omy = 120, ohx = 120, ohy = 120;  // Saved H, M, S x & y coords
@@ -59,24 +58,25 @@ static uint8_t conv2d(const char* p);                                           
 uint8_t hh = conv2d(__TIME__), mm = conv2d(__TIME__ + 3), ss = conv2d(__TIME__ + 6);  // Get H, M, S from compile time
 
 bool initial = 1;
-
+*/
 void setup(void) {
   //Serial.begin(115200);
   pinMode(SOLDERTEMP_PIN, INPUT);
   pinMode(SOLDER_OD, OUTPUT);
 
   tft.init();
-  tft.setRotation(0);
+  tft.setRotation(1);
+  tft.setTextSize(4);
 
   //tft.fillScreen(TFT_BLACK);
   //tft.fillScreen(TFT_RED);
   //tft.fillScreen(TFT_GREEN);
   //tft.fillScreen(TFT_BLUE);
   //tft.fillScreen(TFT_BLACK);
-  tft.fillScreen(TFT_GREY);
+  tft.fillScreen(TFT_BLACK);
 
-  tft.setTextColor(TFT_WHITE, TFT_GREY);  // Adding a background colour erases previous text automatically
-
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);  // Adding a background colour erases previous text automatically
+/*
   // Draw clock face
   tft.fillCircle(120, 120, 118, TFT_GREEN);
   tft.fillCircle(120, 120, 110, TFT_BLACK);
@@ -114,7 +114,7 @@ void setup(void) {
   // Font 7 is a 7 segment font and only contains characters [space] 0 1 2 3 4 5 6 7 8 9 : .
   //tft.drawCentreString("Time flies",120,260,4);
 
-  targetTime = millis() + 1000;
+  targetTime = millis() + 1000;*/
   initOTA();
 }
 unsigned long touchTime = 0;
@@ -152,6 +152,7 @@ void loop() {
     tft.print(y);
     tft.println("   ");
   }
+  /*
   //TSPoint p = ts.getPoint();
   //Serial.printf("x: %i, y: %i\n", x, y);
   if (targetTime < millis()) {
@@ -201,22 +202,21 @@ void loop() {
     tft.drawLine(osx, osy, 120, 121, TFT_RED);
 
     tft.fillCircle(120, 121, 3, TFT_RED);
-  }
+  }*/
 }
-
+/*
 static uint8_t conv2d(const char* p) {
   uint8_t v = 0;
   if ('0' <= *p && *p <= '9')
     v = *p - '0';
   return 10 * v + *++p - '0';
-}
-
+}*/
 void initOTA() {
 
   //Serial.begin(115200);
   //Serial.println("Booting");
   WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
+  WiFi.begin(SSID_WIFI, PW_WIFI);
   while (WiFi.waitForConnectResult() != WL_CONNECTED) {
     //Serial.println("Connection Failed! Rebooting...");
     delay(5000);
