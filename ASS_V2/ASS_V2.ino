@@ -37,30 +37,28 @@
 #define XP 13
 #define XM 2
 
-
 #define SOLDERTEMP_PIN 8
 #define SOLDER_OD 9
 
-TFT_eSPI tft = TFT_eSPI();  // Invoke custom library
-
-TouchPoint TouchScreen = TouchPoint(XP, YP, XM, YM);
+TaskHandle_t SolderTask;
+TaskHandle_t WiFiTask;
 
 //for adafruit touchscreen library
 //TouchScreen ts = TouchScreen(XP, YP, XM, YM, 340); // X+ to X- 340 Ohm
-/*
-float sx = 0, sy = 1, mx = 1, my = 0, hx = -1, hy = 0;  // Saved H, M, S x & y multipliers
-float sdeg = 0, mdeg = 0, hdeg = 0;
-uint16_t osx = 120, osy = 120, omx = 120, omy = 120, ohx = 120, ohy = 120;  // Saved H, M, S x & y coords
-uint16_t x0 = 0, x1 = 0, yy0 = 0, yy1 = 0;
-uint32_t targetTime = 0;  // for next 1 second timeout
-
-static uint8_t conv2d(const char* p);                                                 // Forward declaration needed for IDE 1.6.x
-uint8_t hh = conv2d(__TIME__), mm = conv2d(__TIME__ + 3), ss = conv2d(__TIME__ + 6);  // Get H, M, S from compile time
-
-bool initial = 1;
-*/
 void setup(void) {
-  //Serial.begin(115200);
+  Serial.begin(115200);
+
+  xTaskCreatePinnedToCore(SolderProcess, "Solder Task", 10000, NULL, 0, &SolderTask, 1);
+  xTaskCreatePinnedToCore(WiFiProcess, "WiFi Task", 10000, NULL, 0, &WiFiTask, 0);
+}
+
+void SolderProcess(void* pvParameters) {
+  TFT_eSPI tft = TFT_eSPI();
+  TouchPoint TouchScreen = TouchPoint(XP, YP, XM, YM);
+
+  Button AugButton(&tft, );
+  Button DecButton(&tft, );
+
   pinMode(SOLDERTEMP_PIN, INPUT);
   pinMode(SOLDER_OD, OUTPUT);
 
@@ -75,63 +73,46 @@ void setup(void) {
   //tft.fillScreen(TFT_BLACK);
   tft.fillScreen(TFT_BLACK);
 
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);  // Adding a background colour erases previous text automatically
-/*
-  // Draw clock face
-  tft.fillCircle(120, 120, 118, TFT_GREEN);
-  tft.fillCircle(120, 120, 110, TFT_BLACK);
-
-  // Draw 12 lines
-  for (int i = 0; i < 360; i += 30) {
-    sx = cos((i - 90) * 0.0174532925);
-    sy = sin((i - 90) * 0.0174532925);
-    x0 = sx * 114 + 120;
-    yy0 = sy * 114 + 120;
-    x1 = sx * 100 + 120;
-    yy1 = sy * 100 + 120;
-
-    tft.drawLine(x0, yy0, x1, yy1, TFT_GREEN);
-  }
-
-  // Draw 60 dots
-  for (int i = 0; i < 360; i += 6) {
-    sx = cos((i - 90) * 0.0174532925);
-    sy = sin((i - 90) * 0.0174532925);
-    x0 = sx * 102 + 120;
-    yy0 = sy * 102 + 120;
-    // Draw minute markers
-    tft.drawPixel(x0, yy0, TFT_WHITE);
-
-    // Draw main quadrant dots
-    if (i == 0 || i == 180) tft.fillCircle(x0, yy0, 2, TFT_WHITE);
-    if (i == 90 || i == 270) tft.fillCircle(x0, yy0, 2, TFT_WHITE);
-  }
-
-  tft.fillCircle(120, 121, 3, TFT_WHITE);
-
-  // Draw text at position 120,260 using fonts 4
-  // Only font numbers 2,4,6,7 are valid. Font 6 only contains characters [space] 0 1 2 3 4 5 6 7 8 9 : . - a p m
-  // Font 7 is a 7 segment font and only contains characters [space] 0 1 2 3 4 5 6 7 8 9 : .
-  //tft.drawCentreString("Time flies",120,260,4);
-
-  targetTime = millis() + 1000;*/
-  initOTA();
-}
-unsigned long touchTime = 0;
-  static unsigned long timeComparison = millis();
-
-void loop() {
-  ArduinoOTA.handle();
+  unsigned long solderTime = 0;
+  unsigned long displayTime = 0;
   uint8_t goalTemp = 380;
 
-  if (millis() - timeComparison > 100) {
-    timeComparison = millis();
+  while (true) {
+    if (millis() - displayTime > 10) {  //100 fps, every 10 ms
+      displayTime = millis();
+      uint16_t x = TouchScreen.getX();
+      uint16_t y = TouchScreen.getY();
+
+      if (AugButton.isPressed(x, y)) {
+        AugButton.setColor(...);
+        goalTemp++;
+      } else {
+        AugButton.setColor(...);
+      }
+
+      if (DecButton.isPressed(x, y)) {
+        DecButton.setColor(...);
+        goalTemp--;
+      } else {
+        DecButton.setColor(...);
+      }
+
+      tft.setCursor(0, 10);
+      tft.print("x: ");
+      tft.println(x);
+      tft.print("y: ");
+      tft.println(y);
+    }
+  }
+
+  if (millis() - solderTime > 50) {
+    solderTime = millis();
     // deactivate Output in order to read the temperature
     digitalWrite(SOLDER_OD, LOW);
-    // wait 5 milliseconds to prevent bad measurements
-    delay(2);
+    // wait 10 microseconds to prevent bad measurements
+    delayMicroseconds(10);
     // read the amplified temperature voltage and convert it into temperature
-    uint8_t actualTemp = map(analogRead(SOLDERTEMP_PIN), 0, 4096, 43, 650);
+    uint8_t actualTemp = map(analogRead(SOLDERTEMP_PIN), 0, 4095, 43, 650);
     // activate Soldering Iron if goalTemp is not yet reached
     if (actualTemp < goalTemp) {
       digitalWrite(SOLDER_OD, HIGH);
@@ -139,102 +120,23 @@ void loop() {
       digitalWrite(SOLDER_OD, LOW);
     }
   }
-
-  uint16_t x = TouchScreen.getX();
-  uint16_t y = TouchScreen.getY();
-
-  if (touchTime < millis()) {
-    touchTime += 50;
-
-    tft.setCursor(0, 10);
-    tft.print(x);
-    tft.println("   ");
-    tft.print(y);
-    tft.println("   ");
-  }
-  /*
-  //TSPoint p = ts.getPoint();
-  //Serial.printf("x: %i, y: %i\n", x, y);
-  if (targetTime < millis()) {
-    targetTime += 1000;
-    ss++;  // Advance second
-    if (ss == 60) {
-      ss = 0;
-      mm++;  // Advance minute0
-      if (mm > 59) {
-        mm = 0;
-        hh++;  // Advance hour
-        if (hh > 23) {
-          hh = 0;
-        }
-      }
-    }
-
-    // Pre-compute hand degrees, x & y coords for a fast screen update
-    sdeg = ss * 6;                      // 0-59 -> 0-354
-    mdeg = mm * 6 + sdeg * 0.01666667;  // 0-59 -> 0-360 - includes seconds
-    hdeg = hh * 30 + mdeg * 0.0833333;  // 0-11 -> 0-360 - includes minutes and seconds
-    hx = cos((hdeg - 90) * 0.0174532925);
-    hy = sin((hdeg - 90) * 0.0174532925);
-    mx = cos((mdeg - 90) * 0.0174532925);
-    my = sin((mdeg - 90) * 0.0174532925);
-    sx = cos((sdeg - 90) * 0.0174532925);
-    sy = sin((sdeg - 90) * 0.0174532925);
-
-    if (ss == 0 || initial) {
-      initial = 0;
-      // Erase hour and minute hand positions every minute
-      tft.drawLine(ohx, ohy, 120, 121, TFT_BLACK);
-      ohx = hx * 62 + 121;
-      ohy = hy * 62 + 121;
-      tft.drawLine(omx, omy, 120, 121, TFT_BLACK);
-      omx = mx * 84 + 120;
-      omy = my * 84 + 121;
-    }
-
-    // Redraw new hand positions, hour and minute hands not erased here to avoid flicker
-    tft.drawLine(osx, osy, 120, 121, TFT_BLACK);
-    osx = sx * 90 + 121;
-    osy = sy * 90 + 121;
-    tft.drawLine(osx, osy, 120, 121, TFT_RED);
-    tft.drawLine(ohx, ohy, 120, 121, TFT_WHITE);
-    tft.drawLine(omx, omy, 120, 121, TFT_WHITE);
-    tft.drawLine(osx, osy, 120, 121, TFT_RED);
-
-    tft.fillCircle(120, 121, 3, TFT_RED);
-  }*/
 }
-/*
-static uint8_t conv2d(const char* p) {
-  uint8_t v = 0;
-  if ('0' <= *p && *p <= '9')
-    v = *p - '0';
-  return 10 * v + *++p - '0';
-}*/
-void initOTA() {
 
-  //Serial.begin(115200);
-  //Serial.println("Booting");
+void WiFiProcess(void* pvParameters) {
+  //WiFi Setup
   WiFi.mode(WIFI_STA);
   WiFi.begin(SSID_WIFI, PW_WIFI);
-  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    //Serial.println("Connection Failed! Rebooting...");
-    delay(5000);
-    ESP.restart();
+  Serial.print("Connecting to WiFi");
+
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(1000);
   }
+  Serial.print("\nConnected!");
 
-  // Port defaults to 3232
-  // ArduinoOTA.setPort(3232);
-
-  // Hostname defaults to esp3232-[MAC]
+  //OTA Setup
   ArduinoOTA.setHostname("AwesomeSolderingStation");
-
-  // No authentication by default
   ArduinoOTA.setPassword("esp32");
-
-  // Password can be set with it's md5 value as well
-  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
-  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
 
   ArduinoOTA
     .onStart([]() {
@@ -245,26 +147,58 @@ void initOTA() {
         type = "filesystem";
 
       // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-      //Serial.println("Start updating " + type);
+      Serial.println("Start updating " + type);
     })
     .onEnd([]() {
-      //Serial.println("\nEnd");
+      Serial.println("\nEnd");
     })
     .onProgress([](unsigned int progress, unsigned int total) {
-      //Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+      Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
     })
     .onError([](ota_error_t error) {
-      /*Serial.printf("Error[%u]: ", error);
+      Serial.printf("Error[%u]: ", error);
       if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
       else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
       else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
       else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-      else if (error == OTA_END_ERROR) Serial.println("End Failed");*/
+      else if (error == OTA_END_ERROR) Serial.println("End Failed");
     });
 
   ArduinoOTA.begin();
-  /*
-  Serial.println("Ready");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());*/
+
+  while (true) {
+    ArduinoOTA.handle();
+  }
+}
+
+class Button {
+private:
+  uint16_t x;
+  uint16_t y;
+  uint16_t w;
+  uint16_t h;
+  uint16_t r;
+  uint16_t colour;
+  TFT_eSPI* tft = NULL;
+
+public:
+  Button(TFT_eSPI* _tft, uint16_t _x, uint16_t _y, uint16_t _w, uint16_t _h, uint16_t _r) {
+    tft = _tft;
+    x = _x;
+    y = _y;
+    w = _w;
+    h = _h;
+    r = _r;
+  }
+
+  void setColor(uint16_t _colour) {
+    if (colour != _colour) {
+      tft.fillRoundRect(x, y, w, h, r, _colour);
+      colour = _colour;
+    }
+  }
+
+  bool isPressed(uint8_t _x, uint8_t _y) {
+    return _x > x && _x < (x + w) && _y > y && _y < (y + h);
+  }
 }
