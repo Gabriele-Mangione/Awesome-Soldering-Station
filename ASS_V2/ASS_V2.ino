@@ -46,18 +46,48 @@ TaskHandle_t WiFiTask;
 //for adafruit touchscreen library
 //TouchScreen ts = TouchScreen(XP, YP, XM, YM, 340); // X+ to X- 340 Ohm
 void setup(void) {
-  Serial.begin(115200);
-
-  xTaskCreatePinnedToCore(SolderProcess, "Solder Task", 10000, NULL, 0, &SolderTask, 1);
+  xTaskCreatePinnedToCore(SolderProcess, "Solder Task", 10000, NULL, 1, &SolderTask, 1);
   xTaskCreatePinnedToCore(WiFiProcess, "WiFi Task", 10000, NULL, 0, &WiFiTask, 0);
 }
+
+class Button {
+private:
+  uint16_t x;
+  uint16_t y;
+  uint16_t w;
+  uint16_t h;
+  uint16_t r;
+  uint16_t colour;
+  TFT_eSPI* tft = NULL;
+
+public:
+  Button(TFT_eSPI* _tft, uint16_t _x, uint16_t _y, uint16_t _w, uint16_t _h, uint16_t _r) {
+    tft = _tft;
+    x = _x;
+    y = _y;
+    w = _w;
+    h = _h;
+    r = _r;
+  }
+
+  void setColor(uint16_t _colour) {
+    if (colour != _colour) {
+      tft->fillRoundRect(x, y, w, h, r, _colour);
+      colour = _colour;
+    }
+  }
+
+  bool isPressed(uint8_t _x, uint8_t _y) {
+    return _x > x && _x < (x + w) && _y > y && _y < (y + h);
+  }
+};
 
 void SolderProcess(void* pvParameters) {
   TFT_eSPI tft = TFT_eSPI();
   TouchPoint TouchScreen = TouchPoint(XP, YP, XM, YM);
 
-  Button AugButton(&tft, );
-  Button DecButton(&tft, );
+  Button AugButton(&tft, 200, 30, 100, 70, 5);
+  Button DecButton(&tft, 200, 140, 100, 70, 5);
 
   pinMode(SOLDERTEMP_PIN, INPUT);
   pinMode(SOLDER_OD, OUTPUT);
@@ -80,28 +110,33 @@ void SolderProcess(void* pvParameters) {
   while (true) {
     if (millis() - displayTime > 10) {  //100 fps, every 10 ms
       displayTime = millis();
-      uint16_t x = TouchScreen.getX();
-      uint16_t y = TouchScreen.getY();
+      uint16_t x = map(TouchScreen.getY(), 4000, 500, 0, 320);
+      uint16_t y = map(TouchScreen.getX(), 500, 4000, 0, 240);
+
+      x = x>320? 0 : x;
+      y = y>240? 0 : y;
 
       if (AugButton.isPressed(x, y)) {
-        AugButton.setColor(TFT_GREENYELLOW);
+        AugButton.setColor(0xdfe0);
         goalTemp++;
       } else {
         AugButton.setColor(TFT_GREEN);
       }
 
       if (DecButton.isPressed(x, y)) {
-        DecButton.setColor(TFT_RED);
+        DecButton.setColor(0xfa80);
         goalTemp--;
       } else {
-        DecButton.setColor(TFT_ORANGE);
+        DecButton.setColor(TFT_RED);
       }
 
       tft.setCursor(0, 10);
       tft.print("x: ");
-      tft.println(x);
+      tft.print(x);
+      tft.println("   ");
       tft.print("y: ");
-      tft.println(y);
+      tft.print(y);
+      tft.println("   ");
     }
 
     if (millis() - solderTime > 50) {
@@ -147,21 +182,21 @@ void WiFiProcess(void* pvParameters) {
         type = "filesystem";
 
       // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-      Serial.println("Start updating " + type);
+      //Serial.println("Start updating " + type);
     })
     .onEnd([]() {
-      Serial.println("\nEnd");
+      //Serial.println("\nEnd");
     })
     .onProgress([](unsigned int progress, unsigned int total) {
-      Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+      //Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
     })
     .onError([](ota_error_t error) {
-      Serial.printf("Error[%u]: ", error);
+      /*Serial.printf("Error[%u]: ", error);
       if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
       else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
       else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
       else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-      else if (error == OTA_END_ERROR) Serial.println("End Failed");
+      else if (error == OTA_END_ERROR) Serial.println("End Failed");*/
     });
 
   ArduinoOTA.begin();
@@ -173,34 +208,3 @@ void WiFiProcess(void* pvParameters) {
 
 void loop(){}
 
-class Button {
-private:
-  uint16_t x;
-  uint16_t y;
-  uint16_t w;
-  uint16_t h;
-  uint16_t r;
-  uint16_t colour;
-  TFT_eSPI* tft = NULL;
-
-public:
-  Button(TFT_eSPI* _tft, uint16_t _x, uint16_t _y, uint16_t _w, uint16_t _h, uint16_t _r) {
-    tft = _tft;
-    x = _x;
-    y = _y;
-    w = _w;
-    h = _h;
-    r = _r;
-  }
-
-  void setColor(uint16_t _colour) {
-    if (colour != _colour) {
-      tft.fillRoundRect(x, y, w, h, r, _colour);
-      colour = _colour;
-    }
-  }
-
-  bool isPressed(uint8_t _x, uint8_t _y) {
-    return _x > x && _x < (x + w) && _y > y && _y < (y + h);
-  }
-}
