@@ -77,7 +77,7 @@ public:
     }
   }
 
-  bool isPressed(uint8_t _x, uint8_t _y) {
+  bool isPressed(uint16_t _x, uint16_t _y) {
     return _x > x && _x < (x + w) && _y > y && _y < (y + h);
   }
 };
@@ -105,16 +105,17 @@ void SolderProcess(void* pvParameters) {
 
   unsigned long solderTime = 0;
   unsigned long displayTime = 0;
-  uint8_t goalTemp = 380;
+  uint16_t goalTemp = 380;
+  uint16_t actualTemp = 0;
 
   while (true) {
     if (millis() - displayTime > 10) {  //100 fps, every 10 ms
       displayTime = millis();
       uint16_t x = map(TouchScreen.getY(), 4000, 500, 0, 320);
-      uint16_t y = map(TouchScreen.getX(), 500, 4000, 0, 240);
+      uint16_t y = map(TouchScreen.getX(), 500, 3800, 0, 240);
 
-      x = x>320? 0 : x;
-      y = y>240? 0 : y;
+      x = x > 320 ? 0 : x;
+      y = y > 240 ? 0 : y;
 
       if (AugButton.isPressed(x, y)) {
         AugButton.setColor(0xdfe0);
@@ -132,10 +133,10 @@ void SolderProcess(void* pvParameters) {
 
       tft.setCursor(0, 10);
       tft.print("x: ");
-      tft.print(x);
+      tft.print(goalTemp);
       tft.println("   ");
       tft.print("y: ");
-      tft.print(y);
+      tft.print(actualTemp);
       tft.println("   ");
     }
 
@@ -143,10 +144,10 @@ void SolderProcess(void* pvParameters) {
       solderTime = millis();
       // deactivate Output in order to read the temperature
       digitalWrite(SOLDER_OD, LOW);
-      // wait 10 microseconds to prevent bad measurements
-      delayMicroseconds(10);
+      // wait 1 millisecond to prevent bad measurements from em from switching voltage
+      delay(5);
       // read the amplified temperature voltage and convert it into temperature
-      uint8_t actualTemp = map(analogRead(SOLDERTEMP_PIN), 0, 4095, 43, 650);
+      actualTemp = map(analogRead(SOLDERTEMP_PIN), 0, 4095, 43, 650);
       // activate Soldering Iron if goalTemp is not yet reached
       if (actualTemp < goalTemp) {
         digitalWrite(SOLDER_OD, HIGH);
@@ -206,5 +207,4 @@ void WiFiProcess(void* pvParameters) {
   }
 }
 
-void loop(){}
-
+void loop() {}
