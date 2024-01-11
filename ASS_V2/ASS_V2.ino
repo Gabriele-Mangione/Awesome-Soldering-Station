@@ -28,6 +28,7 @@
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
+#include "ringedBuffer.h"
 
 #define SSID_WIFI "Coldspot"
 #define PW_WIFI "Hotstoppassword"
@@ -46,6 +47,7 @@ TaskHandle_t WiFiTask;
 //for adafruit touchscreen library
 //TouchScreen ts = TouchScreen(XP, YP, XM, YM, 340); // X+ to X- 340 Ohm
 void setup(void) {
+    delay(1000);
   xTaskCreatePinnedToCore(SolderProcess, "Solder Task", 10000, NULL, 1, &SolderTask, 1);
   xTaskCreatePinnedToCore(WiFiProcess, "WiFi Task", 10000, NULL, 0, &WiFiTask, 0);
 }
@@ -108,11 +110,12 @@ void SolderProcess(void* pvParameters) {
   uint16_t goalTemp = 380;
   uint16_t actualTemp = 0;
 
+  RingedBuffer<float, 50> temperatureBuffer;
   while (true) {
     if (millis() - displayTime > 10) {  //100 fps, every 10 ms
       displayTime = millis();
-      uint16_t x = map(TouchScreen.getY(), 4000, 500, 0, 320);
-      uint16_t y = map(TouchScreen.getX(), 500, 3800, 0, 240);
+      uint16_t x = map(TouchScreen.getX(), 4000, 500, 0, 320);
+      uint16_t y = map(TouchScreen.getY(), 500, 3800, 0, 240);
 
       x = x > 320 ? 0 : x;
       y = y > 240 ? 0 : y;
@@ -132,22 +135,26 @@ void SolderProcess(void* pvParameters) {
       }
 
       tft.setCursor(0, 10);
-      tft.print("x: ");
+      tft.println("Set Temp:");
       tft.print(goalTemp);
       tft.println("   ");
-      tft.print("y: ");
+      tft.println("Meas Temp:");
       tft.print(actualTemp);
       tft.println("   ");
     }
 
-    if (millis() - solderTime > 50) {
+    if (millis() - solderTime > 20) {
       solderTime = millis();
       // deactivate Output in order to read the temperature
       digitalWrite(SOLDER_OD, LOW);
       // wait 1 millisecond to prevent bad measurements from em from switching voltage
       delay(5);
       // read the amplified temperature voltage and convert it into temperature
-      actualTemp = map(analogRead(SOLDERTEMP_PIN), 0, 4095, 43, 650);
+
+      temperatureBuffer.push((float)analogRead(SOLDERTEMP_PIN));
+
+      actualTemp = map((uint16_t)temperatureBuffer.avg(), 0, 4095, 20, 600);
+
       // activate Soldering Iron if goalTemp is not yet reached
       if (actualTemp < goalTemp) {
         digitalWrite(SOLDER_OD, HIGH);

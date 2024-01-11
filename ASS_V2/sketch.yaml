@@ -1,2 +1,2 @@
-default_port: COM10
+default_port: COM21
 default_fqbn: esp32:esp32:esp32s3:USBMode=default,UploadMode=cdc
