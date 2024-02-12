@@ -21,6 +21,11 @@
 #define TFT_D7   35 //14
 */
 
+//TODO check if iron is connected, through i2c ack bit:
+//i2c_master_cmd_begin returns ESP_FAIL when not receiving ACK
+//Register 56 of mpu must be set to 0x40 for interrupt on motion detection
+
+
 #include <SPI.h>
 #include <TFT_eSPI.h>  // Hardware-specific library
 #include "TouchBreakout.h"
@@ -212,6 +217,50 @@ void WiFiProcess(void* pvParameters) {
   while (true) {
     ArduinoOTA.handle();
   }
+}
+
+void mpuInit() {
+  MPU_Wire = _MPU_Wire;
+  MPU_Wire->begin(SDAPin,SCLPin,400000);
+  delay(10);
+  // reset
+  MPU_Wire->beginTransmission(0x68);
+  MPU_Wire->write(0x6B);
+  MPU_Wire->write(0x80);
+  MPU_Wire->endTransmission();
+  delay(10);
+  // wakeup
+  MPU_Wire->beginTransmission(0x68);
+  MPU_Wire->write(0x6B);
+  MPU_Wire->write(0x00);
+  MPU_Wire->endTransmission();
+  delay(5);
+  MPU_Wire->beginTransmission(0x68);
+  MPU_Wire->write(0x6B);
+  MPU_Wire->write(0x00);
+  MPU_Wire->endTransmission();
+  //set DLPF to1, -> meas freq to 1kHz
+  MPU_Wire->beginTransmission(0x68);
+  MPU_Wire->write(0x1A);
+  MPU_Wire->write(0x01);
+  MPU_Wire->endTransmission();
+  // acc config
+  MPU_Wire->beginTransmission(0x68);
+  MPU_Wire->write(0x1C);
+  MPU_Wire->write(0x10);
+  MPU_Wire->endTransmission();
+  // gyro config
+  MPU_Wire->beginTransmission(0x68);
+  MPU_Wire->write(0x1B);
+  MPU_Wire->write(0x08);
+  MPU_Wire->endTransmission();
+  // interrupt enable
+  MPU_Wire->beginTransmission(0x68);
+  MPU_Wire->write(0x38);
+  MPU_Wire->write(0x01);
+  MPU_Wire->endTransmission();
+  calib();
+  pinMode(interruptPin, INPUT_PULLUP);
 }
 
 void loop() {}
