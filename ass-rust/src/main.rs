@@ -8,16 +8,13 @@ fn main() {
 
     let peripherals = Peripherals::take().unwrap();
 
+    let i2c0 = peripherals.i2c0;
     let sda = peripherals.pins.gpio10;
     let scl = peripherals.pins.gpio11;
     let int = peripherals.pins.gpio12;
 
-    let i2c_configs = I2cConfig::new().baudrate(400.kHz().into()?;
-    let mut mpu = MPU6050::new(I2cDriver::new(peripherals.i2c0,sda,scl, &i2c_configs));
+    let mut mpu = MPU6050::new(i2c0,sda,scl)?;
 
     log::info!("Hello, world!");
-    loop {
-
-
-    }
+    mpu.init_motionalert();
 }
