@@ -19,7 +19,7 @@ impl MPU6050{
         let register_addr = 56;
         let data: [u8; 2] = [register_addr, 0x40];
         //reset
-        self.i2c_driver.write(I2C_ADDR, &[0x6B as u8, 0x80 as u8], BLOCK)?;
+        self.i2c_driver.write(I2C_ADDR, &(0x6B, 0x80), BLOCK)?;
         FreeRtos::delay_ms(10);
         //wakeup
         self.i2c_driver.write(I2C_ADDR, &[0x6B as u8, 0x00 as u8], BLOCK)?;
@@ -28,4 +28,5 @@ impl MPU6050{
         //interrupt config
         self.i2c_driver.write(I2C_ADDR, &[0x38 as u8, 0x40 as u8], BLOCK)
     }
+
 }

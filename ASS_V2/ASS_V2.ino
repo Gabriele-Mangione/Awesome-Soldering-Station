@@ -27,6 +27,7 @@
 
 
 #include <SPI.h>
+#include <Wire.h>
 #include <TFT_eSPI.h>  // Hardware-specific library
 #include "TouchBreakout.h"
 #include <WiFi.h>
@@ -46,15 +47,33 @@
 #define SOLDERTEMP_PIN 8
 #define SOLDER_OD 9
 
-TaskHandle_t SolderTask;
-TaskHandle_t WiFiTask;
+TaskHandle_t solderTask;
+TaskHandle_t wiFiTask;
+TaskHandle_t displayTask;
+TaskHandle_t sensorTask;
+
+SemaphoreHandle_t semaphoreMVDT;
+
+const uint8_t INTERRUPT_PIN = 12;
+const uint8_t SCL_PIN = 11;
+const uint8_t SDA_PIN = 10;
+
+  uint16_t goalTemp = 380;
+  uint16_t actualTemp = 0;
+
+enum DeviceMode{
+    RUNNING,
+    STANDBY
+}deviceMode;
 
 //for adafruit touchscreen library
 //TouchScreen ts = TouchScreen(XP, YP, XM, YM, 340); // X+ to X- 340 Ohm
 void setup(void) {
     delay(1000);
-  xTaskCreatePinnedToCore(SolderProcess, "Solder Task", 10000, NULL, 1, &SolderTask, 1);
-  xTaskCreatePinnedToCore(WiFiProcess, "WiFi Task", 10000, NULL, 0, &WiFiTask, 0);
+  xTaskCreatePinnedToCore(solderProcess, "Solder Task", 10000, NULL, 1, &solderTask, 1);
+  xTaskCreatePinnedToCore(wiFiProcess, "WiFi Task", 10000, NULL, 0, &wiFiTask, 0);
+  xTaskCreatePinnedToCore(displayProcess, "Display Task", 10000, NULL, 0, &displayTask, 0);
+  xTaskCreatePinnedToCore(sensorProcess, "Sensor and MPU Task", 10000, NULL, 0, &sensorTask, 0);
 }
 
 class Button {
@@ -89,15 +108,49 @@ public:
   }
 };
 
-void SolderProcess(void* pvParameters) {
+void solderProcess(void* pvParameters) {
+
+  pinMode(SOLDERTEMP_PIN, INPUT);
+  pinMode(SOLDER_OD, OUTPUT);
+
+
+  RingedBuffer<float, 30> temperatureBuffer;
+  while (true) {
+    switch(deviceMode){
+      case RUNNING:{
+      // deactivate Output in order to read the temperature
+      digitalWrite(SOLDER_OD, LOW);
+      // wait 2 milliseconds to prevent bad measurements from em of switching voltage
+      delay(2);
+      // read the amplified temperature voltage and convert it into temperature
+      temperatureBuffer.push((float)analogRead(SOLDERTEMP_PIN));
+      actualTemp = map((uint16_t)temperatureBuffer.avg(), 0, 4095, 20, 600);
+
+      // activate Soldering Iron if goalTemp is not yet reached
+      float deltaTemp = goalTemp - actualTemp;
+      if (actualTemp < goalTemp) {
+        digitalWrite(SOLDER_OD, HIGH);
+      } else {
+        digitalWrite(SOLDER_OD, LOW);
+      }
+      delay((uint16_t)deltaTemp /10 + 1);
+
+      }break;
+      case STANDBY:{
+
+      }break;
+      default:{
+      }break;
+    }
+  }
+}
+
+void displayProcess(void* pvParameters){
   TFT_eSPI tft = TFT_eSPI();
   TouchPoint TouchScreen = TouchPoint(XP, YP, XM, YM);
 
   Button AugButton(&tft, 200, 30, 100, 70, 5);
   Button DecButton(&tft, 200, 140, 100, 70, 5);
-
-  pinMode(SOLDERTEMP_PIN, INPUT);
-  pinMode(SOLDER_OD, OUTPUT);
 
   tft.init();
   tft.setRotation(1);
@@ -110,15 +163,18 @@ void SolderProcess(void* pvParameters) {
   //tft.fillScreen(TFT_BLACK);
   tft.fillScreen(TFT_BLACK);
 
-  unsigned long solderTime = 0;
-  unsigned long displayTime = 0;
-  uint16_t goalTemp = 380;
-  uint16_t actualTemp = 0;
 
-  RingedBuffer<float, 50> temperatureBuffer;
-  while (true) {
-    if (millis() - displayTime > 10) {  //100 fps, every 10 ms
-      displayTime = millis();
+  while(true){
+    switch(deviceMode){
+        case RUNNING:{
+
+        }break;
+        case STANDBY:{
+
+        }break;
+        default:{
+        }break;
+    }
       uint16_t x = map(TouchScreen.getX(), 4000, 500, 0, 320);
       uint16_t y = map(TouchScreen.getY(), 500, 3800, 0, 240);
 
@@ -126,51 +182,32 @@ void SolderProcess(void* pvParameters) {
       y = y > 240 ? 0 : y;
 
       if (AugButton.isPressed(x, y)) {
-        AugButton.setColor(0xdfe0);
+        AugButton.setColor(0xDFE0);
         goalTemp++;
       } else {
         AugButton.setColor(TFT_GREEN);
       }
 
       if (DecButton.isPressed(x, y)) {
-        DecButton.setColor(0xfa80);
+        DecButton.setColor(0xFA80);
         goalTemp--;
       } else {
         DecButton.setColor(TFT_RED);
       }
 
       tft.setCursor(0, 10);
-      tft.println("Set Temp:");
-      tft.print(goalTemp);
-      tft.println("   ");
-      tft.println("Meas Temp:");
-      tft.print(actualTemp);
-      tft.println("   ");
-    }
-
-    if (millis() - solderTime > 20) {
-      solderTime = millis();
-      // deactivate Output in order to read the temperature
-      digitalWrite(SOLDER_OD, LOW);
-      // wait 1 millisecond to prevent bad measurements from em from switching voltage
-      delay(5);
-      // read the amplified temperature voltage and convert it into temperature
-
-      temperatureBuffer.push((float)analogRead(SOLDERTEMP_PIN));
-
-      actualTemp = map((uint16_t)temperatureBuffer.avg(), 0, 4095, 20, 600);
-
-      // activate Soldering Iron if goalTemp is not yet reached
-      if (actualTemp < goalTemp) {
-        digitalWrite(SOLDER_OD, HIGH);
-      } else {
-        digitalWrite(SOLDER_OD, LOW);
+      tft.setTextColor(0xFFFF,0x0000);
+      tft.printf("Set Temp:  %3i", goalTemp);
+      if(deviceMode == DeviceMode::RUNNING){
+        tft.printf("Meas Temp: %3i", actualTemp);
+      }else if (deviceMode == DeviceMode::STANDBY){
+        tft.printf("   STANDBY    ", actualTemp);
       }
-    }
+      delay(10);
   }
 }
 
-void WiFiProcess(void* pvParameters) {
+void wiFiProcess(void* pvParameters) {
   //WiFi Setup
   WiFi.mode(WIFI_STA);
   WiFi.begin(SSID_WIFI, PW_WIFI);
@@ -219,48 +256,52 @@ void WiFiProcess(void* pvParameters) {
   }
 }
 
-void mpuInit() {
-  MPU_Wire = _MPU_Wire;
-  MPU_Wire->begin(SDAPin,SCLPin,400000);
+void mpuInitMVDT() {
+  Wire.begin(SDA_PIN,SCL_PIN,400000);
   delay(10);
   // reset
-  MPU_Wire->beginTransmission(0x68);
-  MPU_Wire->write(0x6B);
-  MPU_Wire->write(0x80);
-  MPU_Wire->endTransmission();
+  Wire.beginTransmission(0x68);
+  Wire.write(0x6B);
+  Wire.write(0x80);
+  Wire.endTransmission();
   delay(10);
   // wakeup
-  MPU_Wire->beginTransmission(0x68);
-  MPU_Wire->write(0x6B);
-  MPU_Wire->write(0x00);
-  MPU_Wire->endTransmission();
+  Wire.beginTransmission(0x68);
+  Wire.write(0x6B);
+  Wire.write(0x00);
+  Wire.endTransmission();
   delay(5);
-  MPU_Wire->beginTransmission(0x68);
-  MPU_Wire->write(0x6B);
-  MPU_Wire->write(0x00);
-  MPU_Wire->endTransmission();
-  //set DLPF to1, -> meas freq to 1kHz
-  MPU_Wire->beginTransmission(0x68);
-  MPU_Wire->write(0x1A);
-  MPU_Wire->write(0x01);
-  MPU_Wire->endTransmission();
-  // acc config
-  MPU_Wire->beginTransmission(0x68);
-  MPU_Wire->write(0x1C);
-  MPU_Wire->write(0x10);
-  MPU_Wire->endTransmission();
-  // gyro config
-  MPU_Wire->beginTransmission(0x68);
-  MPU_Wire->write(0x1B);
-  MPU_Wire->write(0x08);
-  MPU_Wire->endTransmission();
-  // interrupt enable
-  MPU_Wire->beginTransmission(0x68);
-  MPU_Wire->write(0x38);
-  MPU_Wire->write(0x01);
-  MPU_Wire->endTransmission();
-  calib();
-  pinMode(interruptPin, INPUT_PULLUP);
+  Wire.beginTransmission(0x68);
+  Wire.write(0x6B);
+  Wire.write(0x00);
+  Wire.endTransmission();
+  // interrupt enable as Movement detection
+  Wire.beginTransmission(0x68);
+  Wire.write(0x38);
+  Wire.write(0x40);
+  Wire.endTransmission();
+}
+
+void IRAM_ATTR movementDetectionISR() { xSemaphoreGiveFromISR(semaphoreMVDT, NULL); }
+
+void sensorProcess(void* pvParameters){
+    
+    pinMode(INTERRUPT_PIN, INPUT_PULLUP);
+
+    attachInterrupt(INTERRUPT_PIN, movementDetectionISR, FALLING);
+    semaphoreMVDT = xSemaphoreCreateBinary();
+  
+    while(true){
+        xSemaphoreTake(semaphoreMVDT, portMAX_DELAY);
+        //read interrupt status register to be sure MPU is connected and right interrupt is triggered
+        Wire.requestFrom(0x68, 1);
+        unsigned long currentTime = millis();
+        while (!Wire.available() && millis() - currentTime < 100); //timeout after 100ms
+        if(Wire.read()&0x40){
+            //Motion detected
+            deviceMode = DeviceMode::RUNNING;
+        }
+    }
 }
 
 void loop() {}
