@@ -25,6 +25,8 @@
 //i2c_master_cmd_begin returns ESP_FAIL when not receiving ACK
 //Register 56 of mpu must be set to 0x40 for interrupt on motion detection
 
+//TODOOOO implement new TFT_eSPI lib version!!!
+
 
 #include <SPI.h>
 #include <Wire.h>
