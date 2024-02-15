@@ -60,18 +60,19 @@ const uint8_t INTERRUPT_PIN = 12;
 const uint8_t SCL_PIN = 11;
 const uint8_t SDA_PIN = 10;
 
-  uint16_t goalTemp = 380;
-  uint16_t actualTemp = 0;
+uint16_t goalTemp = 380;
+uint16_t actualTemp = 0;
+int standbyTime = 60;
 
-enum DeviceMode{
-    RUNNING,
-    STANDBY
-}deviceMode;
+enum DeviceMode {
+  RUNNING,
+  STANDBY
+} deviceMode;
 
 //for adafruit touchscreen library
 //TouchScreen ts = TouchScreen(XP, YP, XM, YM, 340); // X+ to X- 340 Ohm
 void setup(void) {
-    delay(1000);
+  delay(1000);
   xTaskCreatePinnedToCore(solderProcess, "Solder Task", 10000, NULL, 1, &solderTask, 1);
   xTaskCreatePinnedToCore(wiFiProcess, "WiFi Task", 10000, NULL, 0, &wiFiTask, 0);
   xTaskCreatePinnedToCore(displayProcess, "Display Task", 10000, NULL, 0, &displayTask, 0);
@@ -118,36 +119,44 @@ void solderProcess(void* pvParameters) {
 
   RingedBuffer<float, 30> temperatureBuffer;
   while (true) {
-    switch(deviceMode){
-      case RUNNING:{
-      // deactivate Output in order to read the temperature
-      digitalWrite(SOLDER_OD, LOW);
-      // wait 2 milliseconds to prevent bad measurements from em of switching voltage
-      delay(2);
-      // read the amplified temperature voltage and convert it into temperature
-      temperatureBuffer.push((float)analogRead(SOLDERTEMP_PIN));
-      actualTemp = map((uint16_t)temperatureBuffer.avg(), 0, 4095, 20, 600);
+    // deactivate Output in order to read the temperature
+    digitalWrite(SOLDER_OD, LOW);
+    // wait 2 milliseconds to prevent bad measurements from em of switching voltage
+    delay(2);
+    // read the amplified temperature voltage and convert it into temperature
+    temperatureBuffer.push((float)analogRead(SOLDERTEMP_PIN));
+    actualTemp = map((uint16_t)temperatureBuffer.avg(), 0, 4095, 20, 600);
+    switch (deviceMode) {
+      case RUNNING:
+        {
 
-      // activate Soldering Iron if goalTemp is not yet reached
-      float deltaTemp = goalTemp - actualTemp;
-      if (actualTemp < goalTemp) {
-        digitalWrite(SOLDER_OD, HIGH);
-      } else {
-        digitalWrite(SOLDER_OD, LOW);
-      }
-      delay((uint16_t)deltaTemp /10 + 1);
-
-      }break;
-      case STANDBY:{
-
-      }break;
-      default:{
-      }break;
+          // activate Soldering Iron if goalTemp is not yet reached
+          float deltaTemp = goalTemp - actualTemp;
+          if (actualTemp < goalTemp) {
+            digitalWrite(SOLDER_OD, HIGH);
+          } else {
+            digitalWrite(SOLDER_OD, LOW);
+          }
+          if (deltaTemp > 0) {
+            delay((uint16_t)deltaTemp /10);
+          }
+          delay(1);
+        }
+        break;
+      case STANDBY:
+        {
+          digitalWrite(SOLDER_OD, LOW);
+        }
+        break;
+      default:
+        {
+        }
+        break;
     }
   }
 }
 
-void displayProcess(void* pvParameters){
+void displayProcess(void* pvParameters) {
   TFT_eSPI tft = TFT_eSPI();
   TouchPoint TouchScreen = TouchPoint(XP, YP, XM, YM);
 
@@ -156,7 +165,7 @@ void displayProcess(void* pvParameters){
 
   tft.init();
   tft.setRotation(1);
-  tft.setTextSize(4);
+  tft.setTextSize(3);
 
   //tft.fillScreen(TFT_BLACK);
   //tft.fillScreen(TFT_RED);
@@ -165,47 +174,77 @@ void displayProcess(void* pvParameters){
   //tft.fillScreen(TFT_BLACK);
   tft.fillScreen(TFT_BLACK);
 
+  unsigned long blinkTimer = 0;
 
-  while(true){
-    switch(deviceMode){
-        case RUNNING:{
 
-        }break;
-        case STANDBY:{
+  while (true) {
 
-        }break;
-        default:{
-        }break;
+    if (millis() - blinkTimer > 500) {
+      blinkTimer = millis();
     }
-      uint16_t x = map(TouchScreen.getX(), 4000, 500, 0, 320);
-      uint16_t y = map(TouchScreen.getY(), 500, 3800, 0, 240);
 
-      x = x > 320 ? 0 : x;
-      y = y > 240 ? 0 : y;
+    switch (deviceMode) {
+      case RUNNING:
+        {
+          static unsigned long lastSecond = 0;
+          if (millis() / 1000 != lastSecond) {
+            lastSecond = millis() / 1000;
+            standbyTime--;
+          }
+          if (standbyTime < 1) {
+            deviceMode = DeviceMode::STANDBY;
+          }
+        }
+        break;
+      case STANDBY:
+        {
+        }
+        break;
+      default:
+        {
+        }
+        break;
+    }
+    uint16_t x = map(TouchScreen.getX(), 4000, 500, 0, 320);
+    uint16_t y = map(TouchScreen.getY(), 500, 3800, 0, 240);
 
-      if (AugButton.isPressed(x, y)) {
-        AugButton.setColor(0xDFE0);
-        goalTemp++;
-      } else {
-        AugButton.setColor(TFT_GREEN);
-      }
+    x = x > 320 ? 0 : x;
+    y = y > 240 ? 0 : y;
 
-      if (DecButton.isPressed(x, y)) {
-        DecButton.setColor(0xFA80);
-        goalTemp--;
-      } else {
-        DecButton.setColor(TFT_RED);
-      }
+    if (AugButton.isPressed(x, y)) {
+      AugButton.setColor(0xDFE0);
+      goalTemp++;
+    } else {
+      AugButton.setColor(TFT_GREEN);
+    }
 
-      tft.setCursor(0, 10);
-      tft.setTextColor(0xFFFF,0x0000);
-      tft.printf("Set Temp:  %3i", goalTemp);
-      if(deviceMode == DeviceMode::RUNNING){
-        tft.printf("Meas Temp: %3i", actualTemp);
-      }else if (deviceMode == DeviceMode::STANDBY){
-        tft.printf("   STANDBY    ", actualTemp);
-      }
-      delay(10);
+    if (DecButton.isPressed(x, y)) {
+      DecButton.setColor(0xFA80);
+      goalTemp--;
+    } else {
+      DecButton.setColor(TFT_RED);
+    }
+
+    tft.setCursor(0, 10);
+    tft.setTextColor(0xFFFF, 0x0000);
+    tft.printf("Set Temp:\n");
+    tft.setTextSize(5);
+    tft.printf("%3i C\n", goalTemp);
+    tft.setTextSize(3);
+    tft.printf("Meas Temp:\n");
+    tft.setTextSize(5);
+    tft.printf("%3i C\n", actualTemp);
+    tft.setTextSize(3);
+    if (deviceMode == DeviceMode::STANDBY && millis() - blinkTimer < 250) {
+      tft.setTextColor(0x841F, 0x0000);
+      tft.printf("STANDBY");
+      tft.setTextColor(0xFFFF, 0x0000);
+    } else {
+      tft.printf("       ");
+    }
+    tft.setCursor(0, 216);
+    tft.printf("timer: %3i", standbyTime);
+    delay(10);
   }
 }
 
@@ -258,52 +297,122 @@ void wiFiProcess(void* pvParameters) {
   }
 }
 
-void mpuInitMVDT() {
-  Wire.begin(SDA_PIN,SCL_PIN,400000);
+bool mpuInitMVDT() {
+  Wire.begin(SDA_PIN, SCL_PIN, 10000);
   delay(10);
   // reset
   Wire.beginTransmission(0x68);
   Wire.write(0x6B);
   Wire.write(0x80);
-  Wire.endTransmission();
+  if (Wire.endTransmission())
+    return true;
   delay(10);
   // wakeup
   Wire.beginTransmission(0x68);
   Wire.write(0x6B);
   Wire.write(0x00);
-  Wire.endTransmission();
+  if (Wire.endTransmission())
+    return true;
   delay(5);
   Wire.beginTransmission(0x68);
   Wire.write(0x6B);
   Wire.write(0x00);
-  Wire.endTransmission();
+  if (Wire.endTransmission())
+    return true;
+
+  //set DLPF to 1 kHz
+  Wire.beginTransmission(0x68);
+  Wire.write(0x1A);
+  Wire.write(0x01);
+  if (Wire.endTransmission())
+    return true;
+
+  //set acc config
+  Wire.beginTransmission(0x68);
+  Wire.write(0x1C);
+  Wire.write(0x10);
+  if (Wire.endTransmission())
+    return true;
+
+  //set gyro config
+  Wire.beginTransmission(0x68);
+  Wire.write(0x1B);
+  Wire.write(0x10);
+  if (Wire.endTransmission())
+    return true;
+
+  //set motion threshold
+  Wire.beginTransmission(0x68);
+  Wire.write(0x1F);
+  Wire.write(0x02);  //2 mg per unit
+  if (Wire.endTransmission())
+    return true;
+  //set motion det duration
+  Wire.beginTransmission(0x68);
+  Wire.write(0x20);
+  Wire.write(0x05);  //1 ms per unit
+  if (Wire.endTransmission())
+    return true;
+  //set ZERO motion threshold
+  Wire.beginTransmission(0x68);
+  Wire.write(0x21);
+  Wire.write(0x04);  //2 mg per unit
+  if (Wire.endTransmission())
+    return true;
+  //set ZERO motion det duration
+  Wire.beginTransmission(0x68);
+  Wire.write(0x22);
+  Wire.write(0x02);  //64 ms per unit
+  if (Wire.endTransmission())
+    return true;
+
+  //interrupt config
+  Wire.beginTransmission(0x68);
+  Wire.write(0x37);
+  Wire.write(0xC0);
+  if (Wire.endTransmission())
+    return true;
+
   // interrupt enable as Movement detection
   Wire.beginTransmission(0x68);
   Wire.write(0x38);
   Wire.write(0x40);
-  Wire.endTransmission();
+  if (Wire.endTransmission())
+    return true;
+
+  return false;
 }
 
-void IRAM_ATTR movementDetectionISR() { xSemaphoreGiveFromISR(semaphoreMVDT, NULL); }
+void IRAM_ATTR movementDetectionISR() {
+  xSemaphoreGiveFromISR(semaphoreMVDT, NULL);
+}
 
-void sensorProcess(void* pvParameters){
-    
-    pinMode(INTERRUPT_PIN, INPUT_PULLUP);
+void sensorProcess(void* pvParameters) {
 
-    attachInterrupt(INTERRUPT_PIN, movementDetectionISR, FALLING);
-    semaphoreMVDT = xSemaphoreCreateBinary();
-  
-    while(true){
-        xSemaphoreTake(semaphoreMVDT, portMAX_DELAY);
-        //read interrupt status register to be sure MPU is connected and right interrupt is triggered
-        Wire.requestFrom(0x68, 1);
-        unsigned long currentTime = millis();
-        while (!Wire.available() && millis() - currentTime < 100); //timeout after 100ms
-        if(Wire.read()&0x40){
-            //Motion detected
-            deviceMode = DeviceMode::RUNNING;
-        }
+  pinMode(INTERRUPT_PIN, INPUT_PULLUP);
+
+  attachInterrupt(INTERRUPT_PIN, movementDetectionISR, FALLING);
+  semaphoreMVDT = xSemaphoreCreateBinary();
+
+  while (mpuInitMVDT())
+    ;
+
+  while (true) {
+    xSemaphoreTake(semaphoreMVDT, portMAX_DELAY);
+    //read interrupt status register to be sure MPU is connected and right interrupt is triggered
+    Wire.beginTransmission(0x68);
+    Wire.write(58);
+    Wire.endTransmission();
+    Wire.requestFrom(0x68, 1);
+    unsigned long currentTime = millis();
+    while (!Wire.available() && millis() - currentTime < 100)
+      ;  //timeout after 100ms
+    if (Wire.read() & 0x40) {
+      //Motion detected
+      deviceMode = DeviceMode::RUNNING;
+      standbyTime = 60;
     }
+  }
 }
 
 void loop() {}
