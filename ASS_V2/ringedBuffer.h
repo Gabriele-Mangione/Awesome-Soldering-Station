@@ -48,4 +48,12 @@ public:
     }
     return res / coeff;
   }
+
+  T getCumulDelta() {
+    T delta = 0;
+    for (size_t i = 1; i < S; i++) {
+        delta += abs(buffer[i] - buffer[i-1]);
+    }
+    return delta;
+  }
 };

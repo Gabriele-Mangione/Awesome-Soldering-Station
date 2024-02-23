@@ -21,10 +21,6 @@
 #define TFT_D7   35 //14
 */
 
-//TODO check if iron is connected, through i2c ack bit:
-//i2c_master_cmd_begin returns ESP_FAIL when not receiving ACK
-//Register 56 of mpu must be set to 0x40 for interrupt on motion detection
-
 //TODOOOO implement new TFT_eSPI lib version!!!
 
 
@@ -64,9 +60,12 @@ uint16_t goalTemp = 380;
 uint16_t actualTemp = 0;
 int standbyTime = 60;
 
+float myCumulDelta = 0;
+
 enum DeviceMode {
   RUNNING,
-  STANDBY
+  STANDBY,
+  NOT_ATTACHED
 } deviceMode;
 
 //for adafruit touchscreen library
@@ -126,6 +125,7 @@ void solderProcess(void* pvParameters) {
     // read the amplified temperature voltage and convert it into temperature
     temperatureBuffer.push((float)analogRead(SOLDERTEMP_PIN));
     actualTemp = map((uint16_t)temperatureBuffer.avg(), 0, 4095, 20, 600);
+    myCumulDelta = temperatureBuffer.getCumulDelta();
     switch (deviceMode) {
       case RUNNING:
         {
@@ -138,11 +138,12 @@ void solderProcess(void* pvParameters) {
             digitalWrite(SOLDER_OD, LOW);
           }
           if (deltaTemp > 0) {
-            delay((uint16_t)deltaTemp /10);
+            delay((uint16_t)deltaTemp / 10);
           }
           delay(1);
         }
         break;
+      case NOT_ATTACHED:
       case STANDBY:
         {
           digitalWrite(SOLDER_OD, LOW);
@@ -178,33 +179,22 @@ void displayProcess(void* pvParameters) {
 
 
   while (true) {
+    uint32_t loopTime = millis();
 
-    if (millis() - blinkTimer > 500) {
-      blinkTimer = millis();
+    if (loopTime - blinkTimer > 500) {
+      blinkTimer = loopTime;
+    }
+    if (deviceMode == DeviceMode::RUNNING) {
+      static unsigned long lastSecond = 0;
+      if (loopTime / 1000 != lastSecond) {
+        lastSecond = loopTime / 1000;
+        standbyTime--;
+      }
+      if (standbyTime < 1) {
+        deviceMode = DeviceMode::STANDBY;
+      }
     }
 
-    switch (deviceMode) {
-      case RUNNING:
-        {
-          static unsigned long lastSecond = 0;
-          if (millis() / 1000 != lastSecond) {
-            lastSecond = millis() / 1000;
-            standbyTime--;
-          }
-          if (standbyTime < 1) {
-            deviceMode = DeviceMode::STANDBY;
-          }
-        }
-        break;
-      case STANDBY:
-        {
-        }
-        break;
-      default:
-        {
-        }
-        break;
-    }
     uint16_t x = map(TouchScreen.getX(), 4000, 500, 0, 320);
     uint16_t y = map(TouchScreen.getY(), 500, 3800, 0, 240);
 
@@ -235,14 +225,16 @@ void displayProcess(void* pvParameters) {
     tft.setTextSize(5);
     tft.printf("%3i C\n", actualTemp);
     tft.setTextSize(3);
-    if (deviceMode == DeviceMode::STANDBY && millis() - blinkTimer < 250) {
+    if (deviceMode == DeviceMode::STANDBY && loopTime - blinkTimer < 250) {
       tft.setTextColor(0x841F, 0x0000);
       tft.printf("STANDBY");
       tft.setTextColor(0xFFFF, 0x0000);
     } else {
       tft.printf("       ");
     }
-    tft.setCursor(0, 216);
+    tft.setCursor(0, 192); //192
+    tft.printf("CD: %f", myCumulDelta);
+
     tft.printf("timer: %3i", standbyTime);
     delay(10);
   }
