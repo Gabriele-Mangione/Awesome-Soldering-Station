@@ -51,7 +51,7 @@ bool readBMC(uint8_t *data, uint8_t len) {
   }
   return 1;
 }
-bool writeBMC(uint8_t *data, uint8_t len) {
+bool writeBMC(const uint8_t *data, uint8_t len) {
   i2c.beginTransmission(FUSB302_SLADDR);
   // FIFO reg
   i2c.write(0x43);
@@ -60,21 +60,21 @@ bool writeBMC(uint8_t *data, uint8_t len) {
   }
   return i2c.endTransmission();
 }
-bool requestPDO(uint8_t id, float current, float maxCurrent){
+bool requestPDO(uint8_t id, float current_mA, float maxCurrent_mA){
     const uint8_t sop_seq[5] = {0x12,0x12,0x12,0x13,0x80};
     const uint8_t eop_seq[4] = {0xff,0x14,0xfe,0xa1};
 
     uint8_t pdoBytes[6];
     pdoBytes[0] = 0x82;
-    pdoBytes[1] = 0x10 | ((id& 0x07)<<1);
+    pdoBytes[1] = 0x10 | ((0 & 0x07)<<1); // 0 is message id 
 
-    uint16_t maxCurrentBytes = maxCurrent * 20;
-    uint16_t currentBytes = current * 20;
+    uint16_t maxCurrentBytes = maxCurrent_mA/10;
+    uint16_t currentBytes = current_mA/10;
 
     pdoBytes[2] = maxCurrentBytes & 0xFF;
     pdoBytes[3] = ((maxCurrentBytes & 0x300) >> 8) | ( (currentBytes & 0x3F) << 2);
     pdoBytes[4] = (currentBytes & 0x3C0) >> 6;
-    pdoBytes[5] = 0x11;
+    pdoBytes[5] = ((id+1) << 4)|0x01;
 
     writeBMC(sop_seq, 5);
     writeBMC(pdoBytes, 6);
@@ -143,15 +143,21 @@ uint8_t Fusb302::init(uint8_t sda, uint8_t scl, uint8_t i2cfreq) {
   }
 
   PDO pdo[8];
+  uint8_t id9v = 255;
 
   for (uint8_t i = 0; i < messageSize; i++) {
     uint8_t data[4];
     readBMC(data, 4);
     pdo[i].fromData(data);
+    if(pdo[i].voltage == 9.){
+        id9v = i;
+        break;
+    }
   }
-  requestPDO(1,1.,3.);
+  requestPDO(id9v,1500,3000);
 
   for (uint8_t i = 0; i < messageSize; i++) {
-    Serial.printf("PDO%i:\n\tv:%f\n\ti:%f", i, pdo[i].voltage, pdo[i].current);
+    Serial.printf("PDO%i:\n\tv:%f\n\ti:%f\n", i, pdo[i].voltage, pdo[i].current);
   }
+  return 0;
 }

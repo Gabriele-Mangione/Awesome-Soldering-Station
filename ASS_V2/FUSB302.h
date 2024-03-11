@@ -7,7 +7,7 @@
 #include <cstdint>
 namespace Fusb302 {
 
-    void init(uint8_t sda, uint8_t scl, uint8_t i2cfreq);
+    uint8_t init(uint8_t sda, uint8_t scl, uint8_t i2cfreq);
 
 
 }
