@@ -64,6 +64,9 @@ uint16_t goalTemp = 380;
 uint16_t actualTemp = 0;
 int standbyTime = 60;
 
+
+  uint16_t attached = 0;
+
 enum DeviceMode {
   RUNNING,
   STANDBY
@@ -118,11 +121,12 @@ void solderProcess(void* pvParameters) {
 
 
   RingedBuffer<float, 30> temperatureBuffer;
+
   while (true) {
     // deactivate Output in order to read the temperature
     digitalWrite(SOLDER_OD, LOW);
     // wait 2 milliseconds to prevent bad measurements from em of switching voltage
-    delay(2);
+    delay(10);
     // read the amplified temperature voltage and convert it into temperature
     temperatureBuffer.push((float)analogRead(SOLDERTEMP_PIN));
     actualTemp = map((uint16_t)temperatureBuffer.avg(), 0, 4095, 20, 600);
@@ -131,21 +135,24 @@ void solderProcess(void* pvParameters) {
         {
 
           // activate Soldering Iron if goalTemp is not yet reached
-          float deltaTemp = goalTemp - actualTemp;
+          float deltaTemp = (float)goalTemp - (float)actualTemp;
           if (actualTemp < goalTemp) {
             digitalWrite(SOLDER_OD, HIGH);
-          } else {
-            digitalWrite(SOLDER_OD, LOW);
+            //delay(1);
+
+            //attached = analogRead(SOLDERTEMP_PIN);
+
           }
+          /*
           if (deltaTemp > 0) {
             delay((uint16_t)deltaTemp /10);
           }
-          delay(1);
+          */
+          delay(5);
         }
         break;
       case STANDBY:
         {
-          digitalWrite(SOLDER_OD, LOW);
         }
         break;
       default:
@@ -178,17 +185,18 @@ void displayProcess(void* pvParameters) {
 
 
   while (true) {
+    unsigned long loopTime = millis();
 
-    if (millis() - blinkTimer > 500) {
-      blinkTimer = millis();
+    if (loopTime - blinkTimer > 500) {
+      blinkTimer = loopTime;
     }
 
     switch (deviceMode) {
       case RUNNING:
         {
           static unsigned long lastSecond = 0;
-          if (millis() / 1000 != lastSecond) {
-            lastSecond = millis() / 1000;
+          if (loopTime / 1000 != lastSecond) {
+            lastSecond = loopTime / 1000;
             standbyTime--;
           }
           if (standbyTime < 1) {
@@ -235,13 +243,17 @@ void displayProcess(void* pvParameters) {
     tft.setTextSize(5);
     tft.printf("%3i C\n", actualTemp);
     tft.setTextSize(3);
-    if (deviceMode == DeviceMode::STANDBY && millis() - blinkTimer < 250) {
+    if (deviceMode == DeviceMode::STANDBY && loopTime - blinkTimer < 250) {
       tft.setTextColor(0x841F, 0x0000);
       tft.printf("STANDBY");
       tft.setTextColor(0xFFFF, 0x0000);
     } else {
       tft.printf("       ");
     }
+
+    tft.setCursor(0, 186);
+    tft.printf("attached: %4i", attached);
+
     tft.setCursor(0, 216);
     tft.printf("timer: %3i", standbyTime);
     delay(10);
@@ -261,7 +273,7 @@ void wiFiProcess(void* pvParameters) {
   //Serial.print("\nConnected!");
 
   //OTA Setup
-  ArduinoOTA.setHostname("AwesomeSolderingStation");
+  ArduinoOTA.setHostname("AwesomeSolderingStation2");
   ArduinoOTA.setPassword("esp32");
 
   ArduinoOTA
