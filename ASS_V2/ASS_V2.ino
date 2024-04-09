@@ -37,6 +37,8 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include "ringedBuffer.h"
+#include "FUSB302.h"
+#include "FFat.h"
 
 #define SSID_WIFI "Coldspot"
 #define PW_WIFI "Hotstoppassword"
@@ -75,9 +77,11 @@ enum DeviceMode {
 //for adafruit touchscreen library
 //TouchScreen ts = TouchScreen(XP, YP, XM, YM, 340); // X+ to X- 340 Ohm
 void setup(void) {
-  delay(1000);
-  xTaskCreatePinnedToCore(solderProcess, "Solder Task", 10000, NULL, 1, &solderTask, 1);
-  xTaskCreatePinnedToCore(wiFiProcess, "WiFi Task", 10000, NULL, 0, &wiFiTask, 0);
+    Serial.begin(115200);
+    FFat.begin();
+  Fusb302::init(5,4,400000);
+  xTaskCreatePinnedToCore(solderProcess, "Solder Task", 10000, NULL, 1, &solderTask, 0);
+  //xTaskCreatePinnedToCore(wiFiProcess, "WiFi Task", 10000, NULL, 0, &wiFiTask, 0);
   xTaskCreatePinnedToCore(displayProcess, "Display Task", 10000, NULL, 0, &displayTask, 0);
   xTaskCreatePinnedToCore(sensorProcess, "Sensor and MPU Task", 10000, NULL, 0, &sensorTask, 0);
 }
@@ -120,6 +124,24 @@ void solderProcess(void* pvParameters) {
   pinMode(SOLDER_OD, OUTPUT);
 
 
+    
+//Serial.printf("init, format: %i, mount: %i\n", /*FFat.format()*/0, FFat.begin());
+  delay(1000);
+
+    Serial.printf("Print File!:\n");
+    fs::File file = FFat.open("/fusb.txt");
+    if(!file){
+        Serial.printf("ERROR2, file not present?\n");
+        //return;
+    }
+    uint32_t myAddress = 0;
+    while(file.available()){
+        uint8_t myData = file.read();
+        Serial.write(myData);
+        myAddress++;
+    }
+    file.close();
+        Serial.printf("\nFile closed\n");
   RingedBuffer<float, 30> temperatureBuffer;
 
   while (true) {
@@ -283,7 +305,6 @@ void wiFiProcess(void* pvParameters) {
         type = "sketch";
       else  // U_SPIFFS
         type = "filesystem";
-
       // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
       //Serial.println("Start updating " + type);
     })
@@ -406,10 +427,13 @@ void sensorProcess(void* pvParameters) {
   attachInterrupt(INTERRUPT_PIN, movementDetectionISR, FALLING);
   semaphoreMVDT = xSemaphoreCreateBinary();
 
+/*
   while (mpuInitMVDT())
     ;
+    */
 
   while (true) {
+      /*
     xSemaphoreTake(semaphoreMVDT, portMAX_DELAY);
     //read interrupt status register to be sure MPU is connected and right interrupt is triggered
     Wire.beginTransmission(0x68);
@@ -424,6 +448,8 @@ void sensorProcess(void* pvParameters) {
       deviceMode = DeviceMode::RUNNING;
       standbyTime = 60;
     }
+    */
+    delay(100);
   }
 }
 
