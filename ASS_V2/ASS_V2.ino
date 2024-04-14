@@ -77,8 +77,11 @@ enum DeviceMode {
 //for adafruit touchscreen library
 //TouchScreen ts = TouchScreen(XP, YP, XM, YM, 340); // X+ to X- 340 Ohm
 void setup(void) {
-    Serial.begin(115200);
-    FFat.begin();
+  pinMode(0,OUTPUT);
+  digitalWrite(0,LOW);
+  delay(1000);
+  Serial.begin(115200);
+  FFat.begin();
   Fusb302::init(5,4,400000);
   xTaskCreatePinnedToCore(solderProcess, "Solder Task", 10000, NULL, 1, &solderTask, 0);
   //xTaskCreatePinnedToCore(wiFiProcess, "WiFi Task", 10000, NULL, 0, &wiFiTask, 0);
@@ -126,7 +129,6 @@ void solderProcess(void* pvParameters) {
 
     
 //Serial.printf("init, format: %i, mount: %i\n", /*FFat.format()*/0, FFat.begin());
-  delay(1000);
 
     Serial.printf("Print File!:\n");
     fs::File file = FFat.open("/fusb.txt");
@@ -159,7 +161,7 @@ void solderProcess(void* pvParameters) {
           // activate Soldering Iron if goalTemp is not yet reached
           float deltaTemp = (float)goalTemp - (float)actualTemp;
           if (actualTemp < goalTemp) {
-            digitalWrite(SOLDER_OD, HIGH);
+            //digitalWrite(SOLDER_OD, HIGH);
             //delay(1);
 
             //attached = analogRead(SOLDERTEMP_PIN);
@@ -186,9 +188,12 @@ void solderProcess(void* pvParameters) {
 }
 
 void displayProcess(void* pvParameters) {
-  TFT_eSPI tft = TFT_eSPI();
   TouchPoint TouchScreen = TouchPoint(XP, YP, XM, YM);
 
+
+  delay(1000);
+  digitalWrite(0,HIGH);
+  TFT_eSPI tft = TFT_eSPI();
   Button AugButton(&tft, 200, 30, 100, 70, 5);
   Button DecButton(&tft, 200, 140, 100, 70, 5);
 
@@ -208,10 +213,12 @@ void displayProcess(void* pvParameters) {
 
   while (true) {
     unsigned long loopTime = millis();
-
-    if (loopTime - blinkTimer > 500) {
+    blinkTimer = loopTime - (loopTime%500);
+    //equivalent but branch
+    /*if (loopTime - blinkTimer > 500) {
       blinkTimer = loopTime;
     }
+    */
 
     switch (deviceMode) {
       case RUNNING:
@@ -235,6 +242,8 @@ void displayProcess(void* pvParameters) {
         }
         break;
     }
+
+    //touchscreen part
     uint16_t x = map(TouchScreen.getX(), 4000, 500, 0, 320);
     uint16_t y = map(TouchScreen.getY(), 500, 3800, 0, 240);
 
@@ -257,11 +266,11 @@ void displayProcess(void* pvParameters) {
 
     tft.setCursor(0, 10);
     tft.setTextColor(0xFFFF, 0x0000);
-    tft.printf("Set Temp:\n");
+    tft.printf("Set   Temp:\n");
     tft.setTextSize(5);
     tft.printf("%3i C\n", goalTemp);
     tft.setTextSize(3);
-    tft.printf("Meas Temp:\n");
+    tft.printf("Meas. Temp:\n");
     tft.setTextSize(5);
     tft.printf("%3i C\n", actualTemp);
     tft.setTextSize(3);
@@ -274,7 +283,7 @@ void displayProcess(void* pvParameters) {
     }
 
     tft.setCursor(0, 186);
-    tft.printf("attached: %4i", attached);
+    tft.printf("attached: %i", attached);
 
     tft.setCursor(0, 216);
     tft.printf("timer: %3i", standbyTime);
@@ -282,134 +291,41 @@ void displayProcess(void* pvParameters) {
   }
 }
 
-void wiFiProcess(void* pvParameters) {
-  //WiFi Setup
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(SSID_WIFI, PW_WIFI);
-  //Serial.print("Connecting to WiFi");
-
-  while (WiFi.status() != WL_CONNECTED) {
-    //Serial.print(".");
-    delay(1000);
-  }
-  //Serial.print("\nConnected!");
-
-  //OTA Setup
-  ArduinoOTA.setHostname("AwesomeSolderingStation2");
-  ArduinoOTA.setPassword("esp32");
-
-  ArduinoOTA
-    .onStart([]() {
-      String type;
-      if (ArduinoOTA.getCommand() == U_FLASH)
-        type = "sketch";
-      else  // U_SPIFFS
-        type = "filesystem";
-      // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-      //Serial.println("Start updating " + type);
-    })
-    .onEnd([]() {
-      //Serial.println("\nEnd");
-    })
-    .onProgress([](unsigned int progress, unsigned int total) {
-      //Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-    })
-    .onError([](ota_error_t error) {
-      /*Serial.printf("Error[%u]: ", error);
-      if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-      else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-      else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-      else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-      else if (error == OTA_END_ERROR) Serial.println("End Failed");*/
-    });
-
-  ArduinoOTA.begin();
-
-  while (true) {
-    ArduinoOTA.handle();
-  }
-}
-
 bool mpuInitMVDT() {
   Wire.begin(SDA_PIN, SCL_PIN, 10000);
-  delay(10);
-  // reset
-  Wire.beginTransmission(0x68);
-  Wire.write(0x6B);
-  Wire.write(0x80);
+  delay(1);
+  //interrupt masking
+  Wire.beginTransmission(0x4C);
+  Wire.write(0x06);
+  Wire.write(0x44);
   if (Wire.endTransmission())
     return true;
-  delay(10);
-  // wakeup
-  Wire.beginTransmission(0x68);
-  Wire.write(0x6B);
-  Wire.write(0x00);
+  //set samplerate to max
+  Wire.beginTransmission(0x4C);
+  Wire.write(0x08);
+  Wire.write(0x05);
   if (Wire.endTransmission())
     return true;
-  delay(5);
-  Wire.beginTransmission(0x68);
-  Wire.write(0x6B);
-  Wire.write(0x00);
+  //activate Anymotion
+  Wire.beginTransmission(0x4C);
+  Wire.write(0x09);
+  Wire.write(0x04);
   if (Wire.endTransmission())
     return true;
-
-  //set DLPF to 1 kHz
-  Wire.beginTransmission(0x68);
-  Wire.write(0x1A);
+  //set Anymotion Threshold and debounce
+  Wire.beginTransmission(0x4C);
+  Wire.write(0x43);
+  //15 bit threshold
   Wire.write(0x01);
+  Wire.write(0x00);
+  //debounce
+  Wire.write(0x00);
   if (Wire.endTransmission())
     return true;
-
-  //set acc config
-  Wire.beginTransmission(0x68);
-  Wire.write(0x1C);
-  Wire.write(0x10);
-  if (Wire.endTransmission())
-    return true;
-
-  //set gyro config
-  Wire.beginTransmission(0x68);
-  Wire.write(0x1B);
-  Wire.write(0x10);
-  if (Wire.endTransmission())
-    return true;
-
-  //set motion threshold
-  Wire.beginTransmission(0x68);
-  Wire.write(0x1F);
-  Wire.write(0x02);  //2 mg per unit
-  if (Wire.endTransmission())
-    return true;
-  //set motion det duration
-  Wire.beginTransmission(0x68);
-  Wire.write(0x20);
-  Wire.write(0x05);  //1 ms per unit
-  if (Wire.endTransmission())
-    return true;
-  //set ZERO motion threshold
-  Wire.beginTransmission(0x68);
-  Wire.write(0x21);
-  Wire.write(0x04);  //2 mg per unit
-  if (Wire.endTransmission())
-    return true;
-  //set ZERO motion det duration
-  Wire.beginTransmission(0x68);
-  Wire.write(0x22);
-  Wire.write(0x02);  //64 ms per unit
-  if (Wire.endTransmission())
-    return true;
-
-  //interrupt config
-  Wire.beginTransmission(0x68);
-  Wire.write(0x37);
-  Wire.write(0xC0);
-  if (Wire.endTransmission())
-    return true;
-
-  // interrupt enable as Movement detection
-  Wire.beginTransmission(0x68);
-  Wire.write(0x38);
-  Wire.write(0x40);
+  //set to wake (no more register writing from here on)
+  Wire.beginTransmission(0x4C);
+  Wire.write(0x07);
+  Wire.write(0x01);
   if (Wire.endTransmission())
     return true;
 
@@ -427,19 +343,17 @@ void sensorProcess(void* pvParameters) {
   attachInterrupt(INTERRUPT_PIN, movementDetectionISR, FALLING);
   semaphoreMVDT = xSemaphoreCreateBinary();
 
-/*
   while (mpuInitMVDT())
     ;
-    */
 
   while (true) {
       /*
     xSemaphoreTake(semaphoreMVDT, portMAX_DELAY);
     //read interrupt status register to be sure MPU is connected and right interrupt is triggered
-    Wire.beginTransmission(0x68);
+    Wire.beginTransmission(0x4C);
     Wire.write(58);
     Wire.endTransmission();
-    Wire.requestFrom(0x68, 1);
+    Wire.requestFrom(0x4C, 1);
     unsigned long currentTime = millis();
     while (!Wire.available() && millis() - currentTime < 100)
       ;  //timeout after 100ms
@@ -448,8 +362,13 @@ void sensorProcess(void* pvParameters) {
       deviceMode = DeviceMode::RUNNING;
       standbyTime = 60;
     }
-    */
     delay(100);
+    */
+    digitalWrite(42,HIGH);
+    delay(1000);
+    digitalWrite(42,LOW);
+    delay(1000);
+
   }
 }
 
