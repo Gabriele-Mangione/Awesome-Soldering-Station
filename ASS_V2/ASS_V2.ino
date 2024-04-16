@@ -83,10 +83,10 @@ void setup(void) {
   Serial.begin(115200);
   FFat.begin();
   Fusb302::init(5,4,400000);
-  xTaskCreatePinnedToCore(solderProcess, "Solder Task", 10000, NULL, 1, &solderTask, 0);
+  xTaskCreatePinnedToCore(solderProcess, "Solder Task", 10000, NULL, 1, &solderTask, 1);
   //xTaskCreatePinnedToCore(wiFiProcess, "WiFi Task", 10000, NULL, 0, &wiFiTask, 0);
   xTaskCreatePinnedToCore(displayProcess, "Display Task", 10000, NULL, 0, &displayTask, 0);
-  xTaskCreatePinnedToCore(sensorProcess, "Sensor and MPU Task", 10000, NULL, 0, &sensorTask, 0);
+  xTaskCreatePinnedToCore(sensorProcess, "Sensor and MPU Task", 10000, NULL, 0, &sensorTask, 1);
 }
 
 class Button {
@@ -157,22 +157,17 @@ void solderProcess(void* pvParameters) {
     switch (deviceMode) {
       case RUNNING:
         {
-
-          // activate Soldering Iron if goalTemp is not yet reached
-          float deltaTemp = (float)goalTemp - (float)actualTemp;
+          float deltaTemp = std::max(0,(float)goalTemp - (float)actualTemp);
           if (actualTemp < goalTemp) {
+          // activate Soldering Iron if goalTemp is not yet reached
             //digitalWrite(SOLDER_OD, HIGH);
-            //delay(1);
-
-            //attached = analogRead(SOLDERTEMP_PIN);
-
           }
+          delay((uint32_t) (deltaTemp/100.));
           /*
           if (deltaTemp > 0) {
             delay((uint16_t)deltaTemp /10);
           }
           */
-          delay(5);
         }
         break;
       case STANDBY:
@@ -189,7 +184,6 @@ void solderProcess(void* pvParameters) {
 
 void displayProcess(void* pvParameters) {
   TouchPoint TouchScreen = TouchPoint(XP, YP, XM, YM);
-
 
   delay(1000);
   digitalWrite(0,HIGH);
@@ -209,7 +203,6 @@ void displayProcess(void* pvParameters) {
   tft.fillScreen(TFT_BLACK);
 
   unsigned long blinkTimer = 0;
-
 
   while (true) {
     unsigned long loopTime = millis();
@@ -337,21 +330,18 @@ void IRAM_ATTR movementDetectionISR() {
 }
 
 void sensorProcess(void* pvParameters) {
-
   pinMode(INTERRUPT_PIN, INPUT_PULLUP);
-
   attachInterrupt(INTERRUPT_PIN, movementDetectionISR, FALLING);
   semaphoreMVDT = xSemaphoreCreateBinary();
-
-  while (mpuInitMVDT())
-    ;
+  while (mpuInitMVDT()){
+      delay(10);
+  }
 
   while (true) {
-      /*
     xSemaphoreTake(semaphoreMVDT, portMAX_DELAY);
     //read interrupt status register to be sure MPU is connected and right interrupt is triggered
     Wire.beginTransmission(0x4C);
-    Wire.write(58);
+    Wire.write(/*TBD*/);
     Wire.endTransmission();
     Wire.requestFrom(0x4C, 1);
     unsigned long currentTime = millis();
@@ -363,11 +353,6 @@ void sensorProcess(void* pvParameters) {
       standbyTime = 60;
     }
     delay(100);
-    */
-    digitalWrite(42,HIGH);
-    delay(1000);
-    digitalWrite(42,LOW);
-    delay(1000);
 
   }
 }
