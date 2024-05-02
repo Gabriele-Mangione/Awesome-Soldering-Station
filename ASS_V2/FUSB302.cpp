@@ -113,7 +113,7 @@ uint8_t Fusb302::init(uint8_t sda, uint8_t scl, uint32_t i2cfreq) {
     i2c = &Wire;
     i2c->begin(sda, scl, 400000);
     //Serial.printf("begun i2c: ");
-  // Reset: SW_RES
+  // Reset: SW_RES and PD_RES
   writeReg(0x0C, 0x03);
   // Power: enable all
   writeReg(0x0b, 0x0f);
