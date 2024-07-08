@@ -39,6 +39,7 @@
 #include "ringedBuffer.h"
 #include "FUSB302.h"
 #include "FFat.h"
+#include <algorithm>
 
 #define SSID_WIFI "Coldspot"
 #define PW_WIFI "Hotstoppassword"
@@ -64,10 +65,14 @@ const uint8_t SDA_PIN = 10;
 
 uint16_t goalTemp = 380;
 uint16_t actualTemp = 0;
-int standbyTime = 60;
+uint32_t standbyTime = 1000;
+
+uint8_t mpuVar = 0;
 
 
   uint16_t attached = 0;
+
+  TwoWire i2cMpu(1);
 
 enum DeviceMode {
   RUNNING,
@@ -86,7 +91,7 @@ void setup(void) {
   xTaskCreatePinnedToCore(solderProcess, "Solder Task", 10000, NULL, 1, &solderTask, 1);
   //xTaskCreatePinnedToCore(wiFiProcess, "WiFi Task", 10000, NULL, 0, &wiFiTask, 0);
   xTaskCreatePinnedToCore(displayProcess, "Display Task", 10000, NULL, 0, &displayTask, 0);
-  xTaskCreatePinnedToCore(sensorProcess, "Sensor and MPU Task", 10000, NULL, 0, &sensorTask, 1);
+  xTaskCreatePinnedToCore(sensorProcess, "Sensor and MPU Task", 10000, NULL, 0, &sensorTask, 0);
 }
 
 class Button {
@@ -150,19 +155,20 @@ void solderProcess(void* pvParameters) {
     // deactivate Output in order to read the temperature
     digitalWrite(SOLDER_OD, LOW);
     // wait 2 milliseconds to prevent bad measurements from em of switching voltage
-    delay(10);
+    delay(40);
     // read the amplified temperature voltage and convert it into temperature
     temperatureBuffer.push((float)analogRead(SOLDERTEMP_PIN));
     actualTemp = map((uint16_t)temperatureBuffer.avg(), 0, 4095, 20, 600);
     switch (deviceMode) {
       case RUNNING:
         {
-          float deltaTemp = std::max(0,(float)goalTemp - (float)actualTemp);
+          float deltaTemp = std::max(0,goalTemp - actualTemp);
           if (actualTemp < goalTemp) {
           // activate Soldering Iron if goalTemp is not yet reached
-            //digitalWrite(SOLDER_OD, HIGH);
+            digitalWrite(SOLDER_OD, HIGH);
           }
-          delay((uint32_t) (deltaTemp/100.));
+          delay((uint32_t) (deltaTemp/10.));
+          delay(1);
           /*
           if (deltaTemp > 0) {
             delay((uint16_t)deltaTemp /10);
@@ -185,7 +191,6 @@ void solderProcess(void* pvParameters) {
 void displayProcess(void* pvParameters) {
   TouchPoint TouchScreen = TouchPoint(XP, YP, XM, YM);
 
-  delay(1000);
   digitalWrite(0,HIGH);
   TFT_eSPI tft = TFT_eSPI();
   Button AugButton(&tft, 200, 30, 100, 70, 5);
@@ -276,7 +281,7 @@ void displayProcess(void* pvParameters) {
     }
 
     tft.setCursor(0, 186);
-    tft.printf("attached: %i", attached);
+    tft.printf("MPUstate: %i", mpuVar);
 
     tft.setCursor(0, 216);
     tft.printf("timer: %3i", standbyTime);
@@ -285,41 +290,56 @@ void displayProcess(void* pvParameters) {
 }
 
 bool mpuInitMVDT() {
-  Wire.begin(SDA_PIN, SCL_PIN, 10000);
+//create new i2c driver
+  i2cMpu.begin(SDA_PIN, SCL_PIN, 5000);
   delay(1);
+  //set to standby
+  i2cMpu.beginTransmission(0x4C);
+  i2cMpu.write(0x07);
+  i2cMpu.write(0x00);
+  if (i2cMpu.endTransmission())
+    return true;
   //interrupt masking
-  Wire.beginTransmission(0x4C);
-  Wire.write(0x06);
-  Wire.write(0x44);
-  if (Wire.endTransmission())
+  i2cMpu.beginTransmission(0x4C);
+  i2cMpu.write(0x06);
+  i2cMpu.write(0x04);
+  if (i2cMpu.endTransmission())
+    return true;
+  //set range and scale 
+  i2cMpu.beginTransmission(0x4C);
+  i2cMpu.write(0x20);
+  i2cMpu.write(0x09);
+  if (i2cMpu.endTransmission())
     return true;
   //set samplerate to max
-  Wire.beginTransmission(0x4C);
-  Wire.write(0x08);
-  Wire.write(0x05);
-  if (Wire.endTransmission())
+  /*
+  i2cMpu.beginTransmission(0x4C);
+  i2cMpu.write(0x08);
+  i2cMpu.write(0x05);
+  if (i2cMpu.endTransmission())
     return true;
+    */
   //activate Anymotion
-  Wire.beginTransmission(0x4C);
-  Wire.write(0x09);
-  Wire.write(0x04);
-  if (Wire.endTransmission())
+  i2cMpu.beginTransmission(0x4C);
+  i2cMpu.write(0x09);
+  i2cMpu.write(0x04);
+  if (i2cMpu.endTransmission())
     return true;
   //set Anymotion Threshold and debounce
-  Wire.beginTransmission(0x4C);
-  Wire.write(0x43);
+  i2cMpu.beginTransmission(0x4C);
+  i2cMpu.write(0x43);
   //15 bit threshold
-  Wire.write(0x01);
-  Wire.write(0x00);
+  i2cMpu.write(0x1A);
+  i2cMpu.write(0x00);
   //debounce
-  Wire.write(0x00);
-  if (Wire.endTransmission())
+  i2cMpu.write(0x03);
+  if (i2cMpu.endTransmission())
     return true;
   //set to wake (no more register writing from here on)
-  Wire.beginTransmission(0x4C);
-  Wire.write(0x07);
-  Wire.write(0x01);
-  if (Wire.endTransmission())
+  i2cMpu.beginTransmission(0x4C);
+  i2cMpu.write(0x07);
+  i2cMpu.write(0x01);
+  if (i2cMpu.endTransmission())
     return true;
 
   return false;
@@ -331,26 +351,32 @@ void IRAM_ATTR movementDetectionISR() {
 
 void sensorProcess(void* pvParameters) {
   pinMode(INTERRUPT_PIN, INPUT_PULLUP);
-  attachInterrupt(INTERRUPT_PIN, movementDetectionISR, FALLING);
-  semaphoreMVDT = xSemaphoreCreateBinary();
+  //attachInterrupt(INTERRUPT_PIN, movementDetectionISR, FALLING);
+  //semaphoreMVDT = xSemaphoreCreateBinary();
+  mpuVar = 1;
   while (mpuInitMVDT()){
       delay(10);
   }
+  delay(10);
+  mpuVar = 3;
 
   while (true) {
-    xSemaphoreTake(semaphoreMVDT, portMAX_DELAY);
+    //xSemaphoreTake(semaphoreMVDT, portMAX_DELAY);
+    mpuVar = 4;
     //read interrupt status register to be sure MPU is connected and right interrupt is triggered
-    Wire.beginTransmission(0x4C);
-    Wire.write(/*TBD*/);
-    Wire.endTransmission();
-    Wire.requestFrom(0x4C, 1);
+    i2cMpu.beginTransmission(0x4C);
+    i2cMpu.write(0x13);
+    i2cMpu.endTransmission();
+    i2cMpu.requestFrom(0x4C, 1);
     unsigned long currentTime = millis();
-    while (!Wire.available() && millis() - currentTime < 100)
-      ;  //timeout after 100ms
-    if (Wire.read() & 0x40) {
-      //Motion detected
-      deviceMode = DeviceMode::RUNNING;
-      standbyTime = 60;
+    //while (!i2cMpu.available() && (millis() - currentTime < 100));
+        //timeout after 100ms
+    while(i2cMpu.available()){
+        if (i2cMpu.read() & 0x04) {
+        //Motion detected
+        deviceMode = DeviceMode::RUNNING;
+        standbyTime = 1000;
+        }
     }
     delay(100);
 

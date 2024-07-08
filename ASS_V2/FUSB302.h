@@ -1,3 +1,5 @@
+#include <ATTinyCore.h>
+
 
 #ifndef _FUSB302_
 #define _FUSB302_
