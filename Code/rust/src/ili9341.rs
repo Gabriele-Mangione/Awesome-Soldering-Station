@@ -122,21 +122,29 @@ macro_rules! take_pin {
 }
 
 use esp_idf_hal::gpio::{self, AnyIOPin, InputOutput};
+use esp_idf_hal::prelude::Peripherals;
 
 pub struct Pin(gpio::PinDriver<'static, AnyIOPin, InputOutput>);
 
 pub struct ILI9341 {
+    dc_state: bool,
+    gpio: esp32s3::GPIO,
+    /*
     d: [Pin; 8],
     rd: Pin,
     wr: Pin,
     cd: Pin,
     cs: Pin,
     reset: Pin,
+    */
 }
 
 impl ILI9341 {
     pub fn new(pins: Pins) -> ILI9341 {
         let mut res = Self {
+            dc_state: true,
+            gpio: unsafe { esp32s3::Peripherals::steal() }.GPIO,
+            /*
             d: [
                 Pin(take_pin!(pins.gpio42)),
                 Pin(take_pin!(pins.gpio41)),
@@ -151,16 +159,22 @@ impl ILI9341 {
             wr: Pin(take_pin!(pins.gpio43)),
 
             reset: Pin(take_pin!(pins.gpio0)),
+
             cd: Pin(take_pin!(pins.gpio48)),
             cs: Pin(take_pin!(pins.gpio47)),
+            */
         };
 
         // Default, everything is set high
+        res.gpio.out1_w1ts().write(|w| unsafe { w.bits(0b110011 << 11) });
+        res.gpio.out_w1ts().write(|w| unsafe { w.bits(1) });
+        /*
         res.rd.0.set_high().unwrap();
         res.wr.0.set_high().unwrap();
         res.reset.0.set_high().unwrap();
         res.cs.0.set_high().unwrap();
         res.cd.0.set_high().unwrap();
+        */
 
         res.software_reset();
 
@@ -381,6 +395,7 @@ println!("{:#010b}", 1i8);
             .write_data(0x18)
     }
 
+    /*
     #[inline]
     pub fn write_command(&mut self, command: u8) -> &mut Self {
         self.set_command().start_write().write8(command).submit()
@@ -390,9 +405,11 @@ println!("{:#010b}", 1i8);
     pub fn write_data(&mut self, data: u8) -> &mut Self {
         self.set_data().start_write().write8(data).submit()
     }
+    */
 }
 
 impl ILI9341 {
+    /*
     pub fn start_write(&mut self) -> &mut ILI9341 {
         self.wr.0.set_low().unwrap();
 
@@ -436,17 +453,21 @@ impl ILI9341 {
     fn get_databus_mut(&mut self) -> &mut [Pin] {
         &mut self.d
     }
+    */
 
     fn write8(&mut self, data: u8) -> &mut Self {
-        let p = unsafe { esp32s3::Peripherals::steal() };
+        //let p = unsafe { esp32s3::Peripherals::steal() };
 
         let result = ((data.reverse_bits() as u32) << 3);
         let inv_result = (((!data.reverse_bits()) as u32) << 3)  + 0b1_0000_0000_000;
-
-        p.GPIO.out1_w1ts().write(|w| unsafe { w.bits(result) });
-        p.GPIO.out1_w1tc().write(|w| unsafe { w.bits(inv_result) });
         //let mask = 0b111111111000;
         //p.GPIO.out1().modify(|r, w| unsafe { w.bits((r.bits() & !mask) | (mask & result)) });
+
+        //set and clear data and clear wr pin
+        self.gpio.out1_w1ts().write(|w| unsafe { w.bits(result) });
+        self.gpio.out1_w1tc().write(|w| unsafe { w.bits(inv_result) });
+        //set wr pin
+        self.gpio.out1_w1ts().write(|w| unsafe { w.bits(0b1_0000_0000_000) });
 
         /*
         let bus = self.get_databus_mut();
@@ -468,6 +489,40 @@ impl ILI9341 {
         */
 
         self
+    }
+
+    fn write_command(&mut self, cmd: u8) -> &mut Self {
+        //set dc to send command
+        if self.dc_state == true {
+            //self.cd.0.set_low().unwrap();
+            //let p = unsafe { esp32s3::Peripherals::steal() };
+            self.gpio.out1_w1tc().write(|w| unsafe { w.bits(1 << 16) });
+        }
+
+        self.write8(cmd)
+    }
+    fn write_data(&mut self,data:u8) -> &mut Self {
+        //clear dc to send data
+        if self.dc_state == false {
+            //self.cd.0.set_high().unwrap();
+            //let p = unsafe { esp32s3::Peripherals::steal() };
+            self.gpio.out1_w1ts().write(|w| unsafe { w.bits(1 << 16) });
+        }
+
+        self.write8(data)
+    }
+
+    fn read_data(&mut self) -> u8 {
+        //let p = unsafe { esp32s3::Peripherals::steal() };
+        //deactivate output
+        self.gpio.enable1_w1tc().write(|w| unsafe {w.bits(0xFF << 3) });
+
+        let data = (self.gpio.in1().read().bits() >> 3) as u8;
+
+        //reactivate output
+        self.gpio.enable1_w1ts().write(|w| unsafe {w.bits(0xFF << 3) });
+
+        data
     }
 }
 
@@ -539,7 +594,7 @@ impl DrawTarget for ILI9341 {
             .write_data((y2 >> 8) as u8)
             .write_data(y2 as u8);
 
-        self.write_command(MEMORY_WRITE).set_data();
+        self.write_command(MEMORY_WRITE);
 
         //if fill solid is used color iter will be repeated:
         /*
@@ -551,14 +606,16 @@ impl DrawTarget for ILI9341 {
         for pix in 0..(area.size.width * area.size.height) {
             let color = color_iter.next().unwrap();
             // self.wr.0.set_low().unwrap();
-            self.write8(color.to_ne_bytes()[1]);
+            self.write_command(color.to_ne_bytes()[1]);
 
+            /*
             let p = unsafe { esp32s3::Peripherals::steal() };
             p.GPIO.out1_w1ts().write(|w| unsafe { w.bits(0b1_0000_0000_000) });
+            */
             //self.wr.0.set_high().unwrap();
             /// self.wr.0.set_low().unwrap();
-            self.write8(color.to_ne_bytes()[0]);
-            p.GPIO.out1_w1ts().write(|w| unsafe { w.bits(0b1_0000_0000_000) });
+            self.write_data(color.to_ne_bytes()[0]);
+            //p.GPIO.out1_w1ts().write(|w| unsafe { w.bits(0b1_0000_0000_000) });
             //self.wr.0.set_high().unwrap();
         }
         /*
@@ -578,6 +635,7 @@ impl DrawTarget for ILI9341 {
 impl Debug for ILI9341 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(
+            /*
             format!(
                 "d = [
     |7 6 5 4 3 2 1 0|
@@ -604,6 +662,7 @@ impl Debug for ILI9341 {
                 self.reset.0.is_set_high(),
             )
             .as_str(),
+            */"oh hello"
         )
     }
 }
