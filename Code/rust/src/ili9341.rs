@@ -140,7 +140,7 @@ pub struct ILI9341 {
 }
 
 impl ILI9341 {
-    pub fn new(pins: Pins) -> ILI9341 {
+    pub fn new(/*pins: Pins*/) -> ILI9341 {
         let mut res = Self {
             dc_state: true,
             gpio: unsafe { esp32s3::Peripherals::steal() }.GPIO,

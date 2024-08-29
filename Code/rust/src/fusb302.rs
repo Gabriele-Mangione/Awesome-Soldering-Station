@@ -8,16 +8,17 @@ use esp_idf_svc::{
     sys::EspError,
 };
 
+#[derive(Copy, Clone)]
 pub struct PDO {
-    id: u8,
-    voltage: u16,
-    current: u16,
+    pub id: u8,
+    pub voltage: u16,
+    pub current: u16,
 }
 
-impl From<&[u8; 4]> for PDO {
-    fn from(data: &[u8; 4]) -> Self {
+impl /*From<&[u8; 4]> for*/ PDO {
+    fn from(data: &[u8; 4], id: u8) -> Self {
         Self {
-            id: 0,
+            id,
             voltage: ((((data[2] as u16 & 0x0F) << 6) | ((data[1] as u16 >> 2) & 0x3F)) * 50),
             current: ((((data[1] as u16 & 0x03) << 8) | data[0] as u16) * 10),
         }
@@ -35,11 +36,12 @@ impl<'a> Fusb<'a> {
 }
 
 impl Fusb<'_> {
-    pub fn restart_with_pd(
-        &mut self,
-        voltage_mV: u16,
-        current_mA: u16,
-    ) -> Result<Option<PDO>, EspError> {
+    pub fn scan_pds(
+        &mut self
+    ) -> Result<Vec<PDO>, EspError> {
+
+        let mut pdo_vec: Vec<PDO> = Vec::new();
+
         // Reset: SW_RES and PD_RES
         self.write_reg(0x0C, 0x03)?;
         // Power: enable all
@@ -62,7 +64,7 @@ impl Fusb<'_> {
         let cc2lvl = self.read_reg(0x40)? & 0x03;
         if cc2lvl == cc1lvl {
             //no cc communication detected, no PD available
-            return Ok(None);
+            return Ok(pdo_vec);
         }
 
         let mut switches1 = self.read_reg(0x03)? & 0xF8;
@@ -105,7 +107,7 @@ impl Fusb<'_> {
             // wait until reg contains something
             FreeRtos::delay_ms(1);
             if timeout > 500 {
-                return Ok(None);
+                return Ok(pdo_vec);
             }
             timeout += 1;
         }
@@ -117,37 +119,47 @@ impl Fusb<'_> {
 
         // mask PDO amount
         let message_size :u8 = (header_sops[2] >> 4) & 0x07;
-        let mut pdo: PDO = PDO::from(&[0u8;4]);
-        let mut index_pdo: u8 = 255;
+        //let mut pdo: PDO = PDO::from(&[0u8;4]);
+        //let mut index_pdo: u8 = 255;
 
         for i in 0..message_size {
             let mut bmc_data: [u8; 4] = [0u8; 4];
             self.read_bmc(&mut bmc_data)?;
-            pdo = PDO::from(&bmc_data);
+            //pdo = PDO::from(&bmc_data);
+            pdo_vec.push(PDO::from(&bmc_data, i));
 
+            /*
             if pdo.voltage == voltage_mV {
                 index_pdo = i;
             }
+            */
         }
 
+        /*
         if index_pdo == 255 {
             return Ok(None); //no pdo with selected voltage found
         }
+        */
         //discard CRC
         let mut crc: [u8; 4] = [0u8; 4];
         self.read_bmc(&mut crc)?;
 
         // Control1: flush FIFO RX buffer
         self.write_reg(0x07, 0x04)?;
+
+        Ok(pdo_vec)
+
+            /*
         //select pdo for power
         self.request_pdo(&index_pdo, current_mA, 3000)?;
 
         Ok(Some(pdo))
+        */
     }
 
-    fn request_pdo(
+    pub fn request_pdo(
         &mut self,
-        id: &u8,
+        pdo: PDO,
         current_mA: u16,
         max_current_mA: u16,
     ) -> Result<(), EspError> {
@@ -165,7 +177,7 @@ impl Fusb<'_> {
         pdo_seq[2] = max_current_bits as u8;
         pdo_seq[3] = ((max_current_bits >> 8) & 0x03) as u8 | ((current_bits << 2) & 0xFC) as u8;
         pdo_seq[4] = (current_bits >> 6) as u8;
-        pdo_seq[5] = ((*id + 1) << 4) | 0x01;
+        pdo_seq[5] = ((pdo.id + 1) << 4) | 0x01;
 
         self.write_bmc(
             [sop_seq, pdo_seq.as_slice(), eop_seq]

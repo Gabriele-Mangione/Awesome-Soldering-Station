@@ -2,7 +2,7 @@ use core::time;
 use std::{thread, time::SystemTime};
 
 use embedded_graphics::{
-    mono_font::{ascii::FONT_6X12, MonoTextStyle},
+    mono_font::{ascii::FONT_6X12, iso_8859_10::FONT_10X20, MonoTextStyle},
     pixelcolor::{self, Rgb565},
     prelude::{PixelColor, Point, RgbColor, Size, WebColors},
     primitives::{
@@ -35,16 +35,21 @@ fn main() -> Result<(), EspError> {
 
     let peripherals = Peripherals::take()?;
 
-
-    /*
     let sda = peripherals.pins.gpio1;
     let scl = peripherals.pins.gpio2;
 
     let i2c_config = i2c::I2cConfig::new().baudrate(10000.into());
     let i2c_driver = i2c::I2cDriver::new(peripherals.i2c0, sda, scl, &i2c_config)?;
 
-    let _fusb = fusb302::Fusb::new(i2c_driver, 0x68);
+    let mut fusb = fusb302::Fusb::new(i2c_driver, 0x68);
+    let pdo_vec: Vec<fusb302::PDO> = fusb.scan_pds()?;
+    fusb.request_pdo(
+        *pdo_vec.iter().find(|&&x| x.voltage == 9000).unwrap(),
+        3000,
+        3000,
+    )?;
 
+    /*
     log::info!("Hello, world!");
     loop {
         log::info!("Hello, world!");
@@ -52,9 +57,10 @@ fn main() -> Result<(), EspError> {
     }
     */
 
-    let mut screen = ass::ili9341::ILI9341::new(peripherals.pins);
+    let mut screen = ass::ili9341::ILI9341::new();
 
     let timeno = SystemTime::now();
+
     Rectangle::new(Point::new(0, 0), Size::new(320, 240))
         .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK))
         .draw(&mut screen);
@@ -69,6 +75,7 @@ fn main() -> Result<(), EspError> {
     let timepassed = SystemTime::now().duration_since(timeno);
     log::info!("{}", timepassed.unwrap().as_millis());
 
+    /*
     Triangle::new(
         Point::new(10, 10),
         Point::new(200, 10),
@@ -80,8 +87,9 @@ fn main() -> Result<(), EspError> {
     Triangle::new(Point::new(20, 20), Point::new(40, 10), Point::new(60, 100))
         .into_styled(PrimitiveStyle::with_stroke(Rgb565::CSS_RED, 3))
         .draw(&mut screen);
+    */
 
-    let style = MonoTextStyle::new(&FONT_6X12, Rgb565::WHITE);
+    let style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
 
     Text::new("This is a text", Point::new(50, 50), style).draw(&mut screen);
 
