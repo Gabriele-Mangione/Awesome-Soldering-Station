@@ -23,6 +23,11 @@ ISR(_VECTOR(2)) {
     toggler = HIGH;
 }
 
+ISR(_VECTOR(1)){
+
+
+}
+
 /*
 //interrupt not wired (meant for communication)
 ISR(PCINT1_vect){
@@ -222,9 +227,9 @@ void setup(){
   pinMode(MPU_INTERRUPT_PIN, INPUT_PULLUP);
   pinMode(A3, INPUT_PULLUP); //RMT
   //MCUCR|=_BV(ISC01); //falling edge
-  GIMSK=_BV(PCIE0); //mask pin change interrupt 0
-  GIFR=_BV(PCIF0); // pin change interrupt flag 0
-  PCMSK0=_BV(PCINT7); //set interrupt 7, pin PA7
+  GIMSK=_BV(PCIE0 | INT0); //mask pin change interrupt 0
+  //GIFR=_BV(PCIF0); // pin change interrupt flag 0
+  PCMSK0=_BV(PCINT3); //set interrupt 3, pin PA3
 
   //attachInterrupt(MPU_INTERRUPT_PIN, movementDetectionISR, FALLING);
   pinMode(A5, OUTPUT);
