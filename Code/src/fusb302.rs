@@ -106,7 +106,7 @@ impl Fusb<'_> {
             self.read_reg(0x3F)?;
             // wait until reg contains something
             FreeRtos::delay_ms(1);
-            if timeout > 500 {
+            if timeout > 50 {
                 return Ok(pdo_vec);
             }
             timeout += 1;

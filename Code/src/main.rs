@@ -12,7 +12,10 @@ use embedded_graphics::{
     text::Text,
     Drawable,
 };
-use esp_idf_hal::{gpio::ADCPin, units::MilliSeconds};
+use esp_idf_hal::{
+    gpio::{ADCPin, PinDriver},
+    units::MilliSeconds,
+};
 use esp_idf_svc::{
     hal::{
         i2c::{self},
@@ -23,7 +26,8 @@ use esp_idf_svc::{
     timer,
 };
 
-use ass::fusb302;
+use ass::touchbreakout;
+use ass::{fusb302, touchbreakout::TouchBreakout};
 
 fn main() -> Result<(), EspError> {
     // It is necessary to call this function once. Otherwise some patches to the runtime
@@ -33,21 +37,31 @@ fn main() -> Result<(), EspError> {
     // Bind the log crate to the ESP Logging facilities
     esp_idf_svc::log::EspLogger::initialize_default();
 
+    /*
     let peripherals = Peripherals::take()?;
 
-    let sda = peripherals.pins.gpio1;
-    let scl = peripherals.pins.gpio2;
+    let sda = peripherals.pins.gpio5;
+    let scl = peripherals.pins.gpio4;
 
     let i2c_config = i2c::I2cConfig::new().baudrate(10000.into());
     let i2c_driver = i2c::I2cDriver::new(peripherals.i2c0, sda, scl, &i2c_config)?;
 
-    let mut fusb = fusb302::Fusb::new(i2c_driver, 0x68);
+    log::info!("init fusb!");
+
+    let mut fusb = fusb302::Fusb::new(i2c_driver, 0x22);
+    log::info!("scan pds!");
     let pdo_vec: Vec<fusb302::PDO> = fusb.scan_pds()?;
-    fusb.request_pdo(
-        *pdo_vec.iter().find(|&&x| x.voltage == 9000).unwrap(),
-        3000,
-        3000,
-    )?;
+    log::info!("request pdo!");
+
+    if pdo_vec.len() > 0 {
+        fusb.request_pdo(
+            *pdo_vec.iter().find(|&&x| x.voltage == 9000).unwrap(),
+            3000,
+            3000,
+        )?;
+    }
+    */
+    log::info!("done");
 
     /*
     log::info!("Hello, world!");
@@ -56,6 +70,8 @@ fn main() -> Result<(), EspError> {
         FreeRtos::delay_ms(1000);
     }
     */
+
+    log::info!("init screen!");
 
     let mut screen = ass::ili9341::ILI9341::new();
 
@@ -72,8 +88,20 @@ fn main() -> Result<(), EspError> {
     .into_styled(PrimitiveStyle::with_fill(Rgb565::GREEN))
     .draw(&mut screen);
 
+    /*
+    log::info!("init touch!");
+    let yp = peripherals.pins.gpio1;
+    let xm = peripherals.pins.gpio2;
+    let ym = peripherals.pins.gpio14;
+    let xp = peripherals.pins.gpio13;
+
+    let xpa = xp.adc_channel();
+    let ypa = yp.adc_channel();
+
+    let mut ts = TouchBreakout::new(xp.into(), yp.into(), xm.into(), ym.into(), xpa, ypa);
+
     let timepassed = SystemTime::now().duration_since(timeno);
-    log::info!("{}", timepassed.unwrap().as_millis());
+    */
 
     /*
     Triangle::new(
@@ -89,12 +117,15 @@ fn main() -> Result<(), EspError> {
         .draw(&mut screen);
     */
 
+
     let style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
 
     Text::new("This is a text", Point::new(50, 50), style).draw(&mut screen);
 
     loop {
+        //let p = ts.get_y()?;
         thread::sleep_ms(100);
+        //log::info!("touch!{}", p);
     }
 
     Ok(())
