@@ -128,7 +128,7 @@ pub struct Pin(gpio::PinDriver<'static, AnyIOPin, InputOutput>);
 
 pub struct ILI9341 {
     dc_state: bool,
-    gpio: esp32s3::GPIO,
+    //gpio: esp32s3::GPIO,
     /*
     d: [Pin; 8],
     rd: Pin,
@@ -143,7 +143,7 @@ impl ILI9341 {
     pub fn new(/*pins: Pins*/) -> ILI9341 {
         let mut res = Self {
             dc_state: true,
-            gpio: unsafe { esp32s3::Peripherals::steal() }.GPIO,
+            //gpio: unsafe { esp32s3::Peripherals::steal() }.GPIO,
             /*
             d: [
                 Pin(take_pin!(pins.gpio42)),
@@ -166,8 +166,9 @@ impl ILI9341 {
         };
 
         // Default, everything is set high
-        res.gpio.out1_w1ts().write(|w| unsafe { w.bits(0b110011 << 11) });
-        res.gpio.out_w1ts().write(|w| unsafe { w.bits(1) });
+        let gpio =  unsafe { esp32s3::Peripherals::steal() }.GPIO;
+        gpio.out1_w1ts().write(|w| unsafe { w.bits(0b110011 << 11) });
+        gpio.out_w1ts().write(|w| unsafe { w.bits(1) });
         /*
         res.rd.0.set_high().unwrap();
         res.wr.0.set_high().unwrap();
@@ -175,6 +176,9 @@ impl ILI9341 {
         res.cs.0.set_high().unwrap();
         res.cd.0.set_high().unwrap();
         */
+
+        //set cs low
+        gpio.out1_w1tc().write(|w| unsafe { w.bits(1 << 15) });
 
         res.software_reset();
 
@@ -456,7 +460,7 @@ impl ILI9341 {
     */
 
     fn write8(&mut self, data: u8) -> &mut Self {
-        //let p = unsafe { esp32s3::Peripherals::steal() };
+           let gpio =  unsafe { esp32s3::Peripherals::steal() }.GPIO;
 
         let result = ((data.reverse_bits() as u32) << 3);
         let inv_result = (((!data.reverse_bits()) as u32) << 3)  + 0b1_0000_0000_000;
@@ -464,10 +468,10 @@ impl ILI9341 {
         //p.GPIO.out1().modify(|r, w| unsafe { w.bits((r.bits() & !mask) | (mask & result)) });
 
         //set and clear data and clear wr pin
-        self.gpio.out1_w1ts().write(|w| unsafe { w.bits(result) });
-        self.gpio.out1_w1tc().write(|w| unsafe { w.bits(inv_result) });
+        gpio.out1_w1ts().write(|w| unsafe { w.bits(result) });
+        gpio.out1_w1tc().write(|w| unsafe { w.bits(inv_result) });
         //set wr pin
-        self.gpio.out1_w1ts().write(|w| unsafe { w.bits(0b1_0000_0000_000) });
+        gpio.out1_w1ts().write(|w| unsafe { w.bits(0b1_0000_0000_000) });
 
         /*
         let bus = self.get_databus_mut();
@@ -494,9 +498,10 @@ impl ILI9341 {
     fn write_command(&mut self, cmd: u8) -> &mut Self {
         //set dc to send command
         if self.dc_state == true {
+            self.dc_state = false;
             //self.cd.0.set_low().unwrap();
-            //let p = unsafe { esp32s3::Peripherals::steal() };
-            self.gpio.out1_w1tc().write(|w| unsafe { w.bits(1 << 16) });
+            let gpio = unsafe { esp32s3::Peripherals::steal() }.GPIO;
+            gpio.out1_w1tc().write(|w| unsafe { w.bits(1 << 16) });
         }
 
         self.write8(cmd)
@@ -504,9 +509,11 @@ impl ILI9341 {
     fn write_data(&mut self,data:u8) -> &mut Self {
         //clear dc to send data
         if self.dc_state == false {
+            self.dc_state = true;
             //self.cd.0.set_high().unwrap();
             //let p = unsafe { esp32s3::Peripherals::steal() };
-            self.gpio.out1_w1ts().write(|w| unsafe { w.bits(1 << 16) });
+            let gpio = unsafe { esp32s3::Peripherals::steal() }.GPIO;
+            gpio.out1_w1ts().write(|w| unsafe { w.bits(1 << 16) });
         }
 
         self.write8(data)
@@ -515,12 +522,13 @@ impl ILI9341 {
     fn read_data(&mut self) -> u8 {
         //let p = unsafe { esp32s3::Peripherals::steal() };
         //deactivate output
-        self.gpio.enable1_w1tc().write(|w| unsafe {w.bits(0xFF << 3) });
+        let gpio = unsafe { esp32s3::Peripherals::steal() }.GPIO;
+        gpio.enable1_w1tc().write(|w| unsafe {w.bits(0xFF << 3) });
 
-        let data = (self.gpio.in1().read().bits() >> 3) as u8;
+        let data = (gpio.in1().read().bits() >> 3) as u8;
 
         //reactivate output
-        self.gpio.enable1_w1ts().write(|w| unsafe {w.bits(0xFF << 3) });
+        gpio.enable1_w1ts().write(|w| unsafe {w.bits(0xFF << 3) });
 
         data
     }

@@ -75,7 +75,7 @@ fn main() -> Result<(), EspError> {
 
     let mut screen = ass::ili9341::ILI9341::new();
 
-    let timeno = SystemTime::now();
+    //let timeno = SystemTime::now();
 
     Rectangle::new(Point::new(0, 0), Size::new(320, 240))
         .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK))
@@ -100,7 +100,7 @@ fn main() -> Result<(), EspError> {
 
     let mut ts = TouchBreakout::new(xp.into(), yp.into(), xm.into(), ym.into(), xpa, ypa);
 
-    let timepassed = SystemTime::now().duration_since(timeno);
+    //let timepassed = SystemTime::now().duration_since(timeno);
     */
 
     /*
