@@ -128,21 +128,23 @@ pub struct Pin(gpio::PinDriver<'static, AnyIOPin, InputOutput>);
 
 pub struct ILI9341 {
     dc_state: bool,
-    //gpio: esp32s3::GPIO,
-    /*
-    d: [Pin; 8],
-    rd: Pin,
-    wr: Pin,
-    cd: Pin,
-    cs: Pin,
-    reset: Pin,
-    */
+    last_data: u8, //gpio: esp32s3::GPIO,
+                     /*
+                     d: [Pin; 8],
+                     rd: Pin,
+                     wr: Pin,
+                     cd: Pin,
+                     cs: Pin,
+                     reset: Pin,
+                     */
 }
 
 impl ILI9341 {
     pub fn new(/*pins: Pins*/) -> ILI9341 {
         let mut res = Self {
             dc_state: true,
+
+            last_data: 0
             //gpio: unsafe { esp32s3::Peripherals::steal() }.GPIO,
             /*
             d: [
@@ -166,9 +168,12 @@ impl ILI9341 {
         };
 
         // Default, everything is set high
-        let gpio =  unsafe { esp32s3::Peripherals::steal() }.GPIO;
-        gpio.out1_w1ts().write(|w| unsafe { w.bits(0b110011 << 11) });
+        let gpio = unsafe { esp32s3::Peripherals::steal() }.GPIO;
+        gpio.out1_w1ts()
+            .write(|w| unsafe { w.bits(0b110011 << 11) });
+
         gpio.out_w1ts().write(|w| unsafe { w.bits(1) });
+        std::thread::sleep(Duration::from_secs(1));
         /*
         res.rd.0.set_high().unwrap();
         res.wr.0.set_high().unwrap();
@@ -202,7 +207,6 @@ impl ILI9341 {
             .gamma_set()
             .positive_gamma_correction()
             .sleep_out();
-println!("{:#010b}", 1i8);
         std::thread::sleep(Duration::from_millis(160));
 
         res.display_on();
@@ -460,18 +464,24 @@ impl ILI9341 {
     */
 
     fn write8(&mut self, data: u8) -> &mut Self {
-           let gpio =  unsafe { esp32s3::Peripherals::steal() }.GPIO;
+        let gpio = unsafe { esp32s3::Peripherals::steal() }.GPIO;
 
-        let result = ((data.reverse_bits() as u32) << 3);
-        let inv_result = (((!data.reverse_bits()) as u32) << 3)  + 0b1_0000_0000_000;
+        if data != self.last_data {
+            let result = ((data.reverse_bits() as u32) << 3);
         //let mask = 0b111111111000;
         //p.GPIO.out1().modify(|r, w| unsafe { w.bits((r.bits() & !mask) | (mask & result)) });
 
-        //set and clear data and clear wr pin
-        gpio.out1_w1ts().write(|w| unsafe { w.bits(result) });
-        gpio.out1_w1tc().write(|w| unsafe { w.bits(inv_result) });
+            let inv_result = (((!data.reverse_bits()) as u32) << 3) + 0b1_0000_0000_000;
+            //set and clear data and clear wr pin
+            gpio.out1_w1tc().write(|w| unsafe { w.bits(inv_result) });
+            gpio.out1_w1ts().write(|w| unsafe { w.bits(result) });
+
+            self.last_data = data;
+        }
+
         //set wr pin
-        gpio.out1_w1ts().write(|w| unsafe { w.bits(0b1_0000_0000_000) });
+        gpio.out1_w1ts()
+            .write(|w| unsafe { w.bits(0b1_0000_0000_000) });
 
         /*
         let bus = self.get_databus_mut();
@@ -506,7 +516,7 @@ impl ILI9341 {
 
         self.write8(cmd)
     }
-    fn write_data(&mut self,data:u8) -> &mut Self {
+    fn write_data(&mut self, data: u8) -> &mut Self {
         //clear dc to send data
         if self.dc_state == false {
             self.dc_state = true;
@@ -523,12 +533,12 @@ impl ILI9341 {
         //let p = unsafe { esp32s3::Peripherals::steal() };
         //deactivate output
         let gpio = unsafe { esp32s3::Peripherals::steal() }.GPIO;
-        gpio.enable1_w1tc().write(|w| unsafe {w.bits(0xFF << 3) });
+        gpio.enable1_w1tc().write(|w| unsafe { w.bits(0xFF << 3) });
 
         let data = (gpio.in1().read().bits() >> 3) as u8;
 
         //reactivate output
-        gpio.enable1_w1ts().write(|w| unsafe {w.bits(0xFF << 3) });
+        gpio.enable1_w1ts().write(|w| unsafe { w.bits(0xFF << 3) });
 
         data
     }
@@ -614,7 +624,7 @@ impl DrawTarget for ILI9341 {
         for pix in 0..(area.size.width * area.size.height) {
             let color = color_iter.next().unwrap();
             // self.wr.0.set_low().unwrap();
-            self.write_command(color.to_ne_bytes()[1]);
+            self.write_data(color.to_ne_bytes()[1]);
 
             /*
             let p = unsafe { esp32s3::Peripherals::steal() };
@@ -644,33 +654,34 @@ impl Debug for ILI9341 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(
             /*
-            format!(
-                "d = [
-    |7 6 5 4 3 2 1 0|
-    |{} {} {} {} {} {} {} {}|
-  ],
-  rd: {},
-  wr: {},
-  cd: {},
-  cs: {},
-  reset: {}
-",
-                self.d[7].0.is_set_high() as i8,
-                self.d[6].0.is_set_high() as i8,
-                self.d[5].0.is_set_high() as i8,
-                self.d[4].0.is_set_high() as i8,
-                self.d[3].0.is_set_high() as i8,
-                self.d[2].0.is_set_high() as i8,
-                self.d[1].0.is_set_high() as i8,
-                self.d[0].0.is_set_high() as i8,
-                self.rd.0.is_set_high(),
-                self.wr.0.is_set_high(),
-                self.cd.0.is_set_high(),
-                self.cs.0.is_set_high(),
-                self.reset.0.is_set_high(),
-            )
-            .as_str(),
-            */"oh hello"
+                        format!(
+                            "d = [
+                |7 6 5 4 3 2 1 0|
+                |{} {} {} {} {} {} {} {}|
+              ],
+              rd: {},
+              wr: {},
+              cd: {},
+              cs: {},
+              reset: {}
+            ",
+                            self.d[7].0.is_set_high() as i8,
+                            self.d[6].0.is_set_high() as i8,
+                            self.d[5].0.is_set_high() as i8,
+                            self.d[4].0.is_set_high() as i8,
+                            self.d[3].0.is_set_high() as i8,
+                            self.d[2].0.is_set_high() as i8,
+                            self.d[1].0.is_set_high() as i8,
+                            self.d[0].0.is_set_high() as i8,
+                            self.rd.0.is_set_high(),
+                            self.wr.0.is_set_high(),
+                            self.cd.0.is_set_high(),
+                            self.cs.0.is_set_high(),
+                            self.reset.0.is_set_high(),
+                        )
+                        .as_str(),
+                        */
+            "oh hello",
         )
     }
 }
