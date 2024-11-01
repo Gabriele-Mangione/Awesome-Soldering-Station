@@ -12,6 +12,7 @@ use embedded_graphics::primitives::{Primitive, PrimitiveStyle, Rectangle, Triang
 use embedded_graphics::{Drawable, Pixel};
 use esp32s3::gpio::out1_w1tc;
 use esp_idf_hal::gpio::Pins;
+use esp_idf_hal::sys::*;
 
 pub const WIDTH: usize = 320;
 pub const HEIGHT: usize = 240;
@@ -165,6 +166,22 @@ impl ILI9341 {
             cd: Pin(take_pin!(pins.gpio48)),
             cs: Pin(take_pin!(pins.gpio47)),
             */
+        };
+        
+        unsafe {
+            gpio_set_direction(42, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
+            gpio_set_direction(41, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
+            gpio_set_direction(40, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
+            gpio_set_direction(39, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
+            gpio_set_direction(38, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
+            gpio_set_direction(37, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
+            gpio_set_direction(36, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
+            gpio_set_direction(35, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
+            gpio_set_direction(44, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
+            gpio_set_direction(43, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
+            gpio_set_direction(0, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
+            gpio_set_direction(48, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
+            gpio_set_direction(47, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
         };
 
         // Default, everything is set high
