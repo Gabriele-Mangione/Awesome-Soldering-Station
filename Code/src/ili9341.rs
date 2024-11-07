@@ -130,14 +130,14 @@ pub struct Pin(gpio::PinDriver<'static, AnyIOPin, InputOutput>);
 pub struct ILI9341 {
     dc_state: bool,
     last_data: u8, //gpio: esp32s3::GPIO,
-                     /*
-                     d: [Pin; 8],
-                     rd: Pin,
-                     wr: Pin,
-                     cd: Pin,
-                     cs: Pin,
-                     reset: Pin,
-                     */
+                   /*
+                   d: [Pin; 8],
+                   rd: Pin,
+                   wr: Pin,
+                   cd: Pin,
+                   cs: Pin,
+                   reset: Pin,
+                   */
 }
 
 impl ILI9341 {
@@ -145,29 +145,29 @@ impl ILI9341 {
         let mut res = Self {
             dc_state: true,
 
-            last_data: 0
-            //gpio: unsafe { esp32s3::Peripherals::steal() }.GPIO,
-            /*
-            d: [
-                Pin(take_pin!(pins.gpio42)),
-                Pin(take_pin!(pins.gpio41)),
-                Pin(take_pin!(pins.gpio40)),
-                Pin(take_pin!(pins.gpio39)),
-                Pin(take_pin!(pins.gpio38)),
-                Pin(take_pin!(pins.gpio37)),
-                Pin(take_pin!(pins.gpio36)),
-                Pin(take_pin!(pins.gpio35)),
-            ],
-            rd: Pin(take_pin!(pins.gpio44)),
-            wr: Pin(take_pin!(pins.gpio43)),
+            last_data: 0, //gpio: unsafe { esp32s3::Peripherals::steal() }.GPIO,
+                          /*
+                          d: [
+                              Pin(take_pin!(pins.gpio42)),
+                              Pin(take_pin!(pins.gpio41)),
+                              Pin(take_pin!(pins.gpio40)),
+                              Pin(take_pin!(pins.gpio39)),
+                              Pin(take_pin!(pins.gpio38)),
+                              Pin(take_pin!(pins.gpio37)),
+                              Pin(take_pin!(pins.gpio36)),
+                              Pin(take_pin!(pins.gpio35)),
+                          ],
+                          rd: Pin(take_pin!(pins.gpio44)),
+                          wr: Pin(take_pin!(pins.gpio43)),
 
-            reset: Pin(take_pin!(pins.gpio0)),
+                          reset: Pin(take_pin!(pins.gpio0)),
 
-            cd: Pin(take_pin!(pins.gpio48)),
-            cs: Pin(take_pin!(pins.gpio47)),
-            */
+                          cd: Pin(take_pin!(pins.gpio48)),
+                          cs: Pin(take_pin!(pins.gpio47)),
+                          */
         };
-        
+
+        /*
         unsafe {
             gpio_set_direction(42, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
             gpio_set_direction(41, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
@@ -183,13 +183,21 @@ impl ILI9341 {
             gpio_set_direction(48, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
             gpio_set_direction(47, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
         };
+        */
 
-        // Default, everything is set high
         let gpio = unsafe { esp32s3::Peripherals::steal() }.GPIO;
+
+        //enable pin registers
+        gpio.enable1_w1ts()
+            .write(|w| unsafe { w.bits(0xFF8) });
+        gpio.enable_w1ts()
+            .write(|w| unsafe { w.bits(0x1) });
+
+        //set all pins high
         gpio.out1_w1ts()
             .write(|w| unsafe { w.bits(0b110011 << 11) });
-
         gpio.out_w1ts().write(|w| unsafe { w.bits(1) });
+
         std::thread::sleep(Duration::from_secs(1));
         /*
         res.rd.0.set_high().unwrap();
@@ -485,8 +493,8 @@ impl ILI9341 {
 
         if data != self.last_data {
             let result = ((data.reverse_bits() as u32) << 3);
-        //let mask = 0b111111111000;
-        //p.GPIO.out1().modify(|r, w| unsafe { w.bits((r.bits() & !mask) | (mask & result)) });
+            //let mask = 0b111111111000;
+            //p.GPIO.out1().modify(|r, w| unsafe { w.bits((r.bits() & !mask) | (mask & result)) });
 
             let inv_result = (((!data.reverse_bits()) as u32) << 3) + 0b1_0000_0000_000;
             //set and clear data and clear wr pin
