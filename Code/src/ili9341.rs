@@ -188,17 +188,15 @@ impl ILI9341 {
         let gpio = unsafe { esp32s3::Peripherals::steal() }.GPIO;
 
         //enable pin registers
-        gpio.enable1_w1ts()
-            .write(|w| unsafe { w.bits(0xFF8) });
-        gpio.enable_w1ts()
-            .write(|w| unsafe { w.bits(0x1) });
+        gpio.enable1_w1ts().write(|w| unsafe { w.bits(0xFFF8) });
+        gpio.enable_w1ts().write(|w| unsafe { w.bits(0x1) });
 
         //set all pins high
-        gpio.out1_w1ts()
-            .write(|w| unsafe { w.bits(0b110011 << 11) });
+        gpio.out1_w1ts().write(|w| unsafe { w.bits(0b110011 << 11) });
         gpio.out_w1ts().write(|w| unsafe { w.bits(1) });
 
         std::thread::sleep(Duration::from_secs(1));
+
         /*
         res.rd.0.set_high().unwrap();
         res.wr.0.set_high().unwrap();
