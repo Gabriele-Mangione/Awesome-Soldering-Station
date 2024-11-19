@@ -1,3 +1,4 @@
+use std::borrow::BorrowMut;
 use std::f32::consts::PI;
 use std::ops::Shr;
 use std::thread;
@@ -12,7 +13,9 @@ use embedded_graphics::primitives::{Primitive, PrimitiveStyle, Rectangle, Triang
 use embedded_graphics::{Drawable, Pixel};
 use esp32s3::gpio::out1_w1tc;
 use esp_idf_hal::gpio::Pins;
-use esp_idf_hal::sys::*;
+use esp_idf_hal::gpio::Pin;
+use esp_idf_hal::peripheral::Peripheral;
+use esp_idf_hal::sys::*; 
 
 pub const WIDTH: usize = 320;
 pub const HEIGHT: usize = 240;
@@ -125,49 +128,45 @@ macro_rules! take_pin {
 use esp_idf_hal::gpio::{self, AnyIOPin, InputOutput};
 use esp_idf_hal::prelude::Peripherals;
 
-pub struct Pin(gpio::PinDriver<'static, AnyIOPin, InputOutput>);
+pub struct Pinacolada(gpio::PinDriver<'static, AnyIOPin, InputOutput>);
+//pub struct Pinacolada( AnyIOPin);
 
 pub struct ILI9341 {
     dc_state: bool,
     last_data: u8, //gpio: esp32s3::GPIO,
-                   /*
-                   d: [Pin; 8],
-                   rd: Pin,
-                   wr: Pin,
-                   cd: Pin,
-                   cs: Pin,
-                   reset: Pin,
-                   */
+                   d: [Pinacolada; 8],
+                   rd: Pinacolada,
+                   wr: Pinacolada,
+                   cd: Pinacolada,
+                   cs: Pinacolada,
+                   reset: Pinacolada,
 }
 
 impl ILI9341 {
-    pub fn new(/*pins: Pins*/) -> ILI9341 {
+    pub fn new(pins: Pins) -> ILI9341 {
         let mut res = Self {
             dc_state: true,
 
             last_data: 0, //gpio: unsafe { esp32s3::Peripherals::steal() }.GPIO,
-                          /*
                           d: [
-                              Pin(take_pin!(pins.gpio42)),
-                              Pin(take_pin!(pins.gpio41)),
-                              Pin(take_pin!(pins.gpio40)),
-                              Pin(take_pin!(pins.gpio39)),
-                              Pin(take_pin!(pins.gpio38)),
-                              Pin(take_pin!(pins.gpio37)),
-                              Pin(take_pin!(pins.gpio36)),
-                              Pin(take_pin!(pins.gpio35)),
+                              Pinacolada(take_pin!(pins.gpio42)),
+                              Pinacolada(take_pin!(pins.gpio41)),
+                              Pinacolada(take_pin!(pins.gpio40)),
+                              Pinacolada(take_pin!(pins.gpio39)),
+                              Pinacolada(take_pin!(pins.gpio38)),
+                              Pinacolada(take_pin!(pins.gpio37)),
+                              Pinacolada(take_pin!(pins.gpio36)),
+                              Pinacolada(take_pin!(pins.gpio35)),
                           ],
-                          rd: Pin(take_pin!(pins.gpio44)),
-                          wr: Pin(take_pin!(pins.gpio43)),
+                          rd: Pinacolada(take_pin!(pins.gpio44)),
+                          wr: Pinacolada(take_pin!(pins.gpio43)),
 
-                          reset: Pin(take_pin!(pins.gpio0)),
+                          reset: Pinacolada(take_pin!(pins.gpio0)),
 
-                          cd: Pin(take_pin!(pins.gpio48)),
-                          cs: Pin(take_pin!(pins.gpio47)),
-                          */
+                          cd: Pinacolada(take_pin!(pins.gpio48)),
+                          cs: Pinacolada(take_pin!(pins.gpio47)),
         };
 
-        /*
         unsafe {
             gpio_set_direction(42, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
             gpio_set_direction(41, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
@@ -179,21 +178,20 @@ impl ILI9341 {
             gpio_set_direction(35, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
             gpio_set_direction(44, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
             gpio_set_direction(43, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
-            gpio_set_direction(0, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
+            //gpio_set_direction(0, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
             gpio_set_direction(48, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
             gpio_set_direction(47, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
         };
-        */
 
         let gpio = unsafe { esp32s3::Peripherals::steal() }.GPIO;
 
         //enable pin registers
         gpio.enable1_w1ts().write(|w| unsafe { w.bits(0xFFF8) });
-        gpio.enable_w1ts().write(|w| unsafe { w.bits(0x1) });
+        //gpio.enable_w1ts().write(|w| unsafe { w.bits(0x1) });
 
         //set all pins high
         gpio.out1_w1ts().write(|w| unsafe { w.bits(0b110011 << 11) });
-        gpio.out_w1ts().write(|w| unsafe { w.bits(1) });
+        //gpio.out_w1ts().write(|w| unsafe { w.bits(1) });
 
         std::thread::sleep(Duration::from_secs(1));
 
@@ -500,6 +498,9 @@ impl ILI9341 {
             gpio.out1_w1ts().write(|w| unsafe { w.bits(result) });
 
             self.last_data = data;
+        }
+        else{
+            gpio.out1_w1tc().write(|w| unsafe { w.bits(0b1_0000_0000_000) });
         }
 
         //set wr pin

@@ -1,5 +1,5 @@
 use core::time;
-use std::{thread, time::SystemTime};
+use std::{thread, time::SystemTime, borrow::BorrowMut};
 
 use embedded_graphics::{
     mono_font::{ascii::FONT_6X12, iso_8859_10::FONT_10X20, MonoTextStyle},
@@ -13,8 +13,8 @@ use embedded_graphics::{
     Drawable,
 };
 use esp_idf_hal::{
-    gpio::{ADCPin, PinDriver},
-    units::MilliSeconds,
+    gpio::{ADCPin, PinDriver, Pin},
+    units::MilliSeconds, peripheral::Peripheral,
 };
 use esp_idf_svc::{
     hal::{
@@ -37,31 +37,38 @@ fn main() -> Result<(), EspError> {
     // Bind the log crate to the ESP Logging facilities
     esp_idf_svc::log::EspLogger::initialize_default();
 
-    /*
-    let peripherals = Peripherals::take()?;
+    let mut peripherals = Peripherals::take()?;
+    {
+        let sda =unsafe{ peripherals.pins.gpio5.clone_unchecked()};
+        let scl = unsafe{peripherals.pins.gpio4.clone_unchecked()};
 
-    let sda = peripherals.pins.gpio5;
-    let scl = peripherals.pins.gpio4;
+        let i2c_config = i2c::I2cConfig::new().baudrate(10000.into());
+        let i2c_driver = i2c::I2cDriver::new(peripherals.i2c0, sda, scl, &i2c_config)?;
 
-    let i2c_config = i2c::I2cConfig::new().baudrate(10000.into());
-    let i2c_driver = i2c::I2cDriver::new(peripherals.i2c0, sda, scl, &i2c_config)?;
+        log::info!("init fusb!");
 
-    log::info!("init fusb!");
+        let mut fusb = fusb302::Fusb::new(i2c_driver, 0x22);
+        log::info!("scan pds!");
+        let pdo_vec: Vec<fusb302::PDO> = fusb.scan_pds()?;
+        log::info!("request pdo!");
 
-    let mut fusb = fusb302::Fusb::new(i2c_driver, 0x22);
-    log::info!("scan pds!");
-    let pdo_vec: Vec<fusb302::PDO> = fusb.scan_pds()?;
-    log::info!("request pdo!");
-
-    if pdo_vec.len() > 0 {
-        fusb.request_pdo(
-            *pdo_vec.iter().find(|&&x| x.voltage == 9000).unwrap(),
-            3000,
-            3000,
-        )?;
+        if pdo_vec.len() > 0 {
+            fusb.request_pdo(
+                *pdo_vec.iter().find(|&&x| x.voltage == 9000).unwrap(),
+                3000,
+                3000,
+            )?;
+        }
+        log::info!("done");
     }
-    */
-    log::info!("done");
+
+    {
+        let reset_pin =unsafe{ peripherals.pins.gpio0.clone_unchecked()};
+
+        let mut pd = PinDriver::input_output(reset_pin)?;
+        pd.set_high();
+        drop(pd);
+    }
 
     /*
     log::info!("Hello, world!");
@@ -73,9 +80,9 @@ fn main() -> Result<(), EspError> {
 
     log::info!("init screen!");
 
-    let mut screen = ass::ili9341::ILI9341::new();
+    let mut screen = ass::ili9341::ILI9341::new(peripherals.pins);
 
-    //let timeno = SystemTime::now();
+    let timeno = SystemTime::now();
 
     Rectangle::new(Point::new(0, 0), Size::new(320, 240))
         .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK))
@@ -87,6 +94,9 @@ fn main() -> Result<(), EspError> {
     )
     .into_styled(PrimitiveStyle::with_fill(Rgb565::GREEN))
     .draw(&mut screen);
+
+    let timepassed = SystemTime::now().duration_since(timeno).unwrap();
+    log::info!("{}", timepassed.as_millis());
 
     /*
     log::info!("init touch!");
@@ -100,7 +110,6 @@ fn main() -> Result<(), EspError> {
 
     let mut ts = TouchBreakout::new(xp.into(), yp.into(), xm.into(), ym.into(), xpa, ypa);
 
-    //let timepassed = SystemTime::now().duration_since(timeno);
     */
 
     /*
@@ -116,7 +125,6 @@ fn main() -> Result<(), EspError> {
         .into_styled(PrimitiveStyle::with_stroke(Rgb565::CSS_RED, 3))
         .draw(&mut screen);
     */
-
 
     let style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
 
