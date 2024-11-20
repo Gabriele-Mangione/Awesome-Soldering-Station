@@ -1,5 +1,5 @@
 use core::time;
-use std::{thread, time::SystemTime, borrow::BorrowMut};
+use std::{borrow::BorrowMut, thread, time::SystemTime};
 
 use embedded_graphics::{
     mono_font::{ascii::FONT_6X12, iso_8859_10::FONT_10X20, MonoTextStyle},
@@ -13,8 +13,9 @@ use embedded_graphics::{
     Drawable,
 };
 use esp_idf_hal::{
-    gpio::{ADCPin, PinDriver, Pin},
-    units::MilliSeconds, peripheral::Peripheral,
+    gpio::{ADCPin, Pin, PinDriver},
+    peripheral::Peripheral,
+    units::MilliSeconds,
 };
 use esp_idf_svc::{
     hal::{
@@ -39,8 +40,8 @@ fn main() -> Result<(), EspError> {
 
     let mut peripherals = Peripherals::take()?;
     {
-        let sda =unsafe{ peripherals.pins.gpio5.clone_unchecked()};
-        let scl = unsafe{peripherals.pins.gpio4.clone_unchecked()};
+        let sda = unsafe { peripherals.pins.gpio5.clone_unchecked() };
+        let scl = unsafe { peripherals.pins.gpio4.clone_unchecked() };
 
         let i2c_config = i2c::I2cConfig::new().baudrate(10000.into());
         let i2c_driver = i2c::I2cDriver::new(peripherals.i2c0, sda, scl, &i2c_config)?;
@@ -63,11 +64,36 @@ fn main() -> Result<(), EspError> {
     }
 
     {
-        let reset_pin =unsafe{ peripherals.pins.gpio0.clone_unchecked()};
-
+        let reset_pin = unsafe { peripherals.pins.gpio0.clone_unchecked() };
+        unsafe {
+            let g41 = peripherals.pins.gpio41.clone_unchecked();
+            let g42 = peripherals.pins.gpio42.clone_unchecked();
+            let g40 = peripherals.pins.gpio40.clone_unchecked();
+            let g39 = peripherals.pins.gpio39.clone_unchecked();
+            let g38 = peripherals.pins.gpio38.clone_unchecked();
+            let g37 = peripherals.pins.gpio37.clone_unchecked();
+            let g36 = peripherals.pins.gpio36.clone_unchecked();
+            let g35 = peripherals.pins.gpio35.clone_unchecked();
+            let g44 = peripherals.pins.gpio44.clone_unchecked();
+            let g43 = peripherals.pins.gpio43.clone_unchecked();
+            let g48 = peripherals.pins.gpio48.clone_unchecked();
+            let g47 = peripherals.pins.gpio47.clone_unchecked();
         let mut pd = PinDriver::input_output(reset_pin)?;
-        pd.set_high();
-        drop(pd);
+        PinDriver::input_output(g41);
+        PinDriver::input_output(g42);
+        PinDriver::input_output(g40);
+        PinDriver::input_output(g39);
+        PinDriver::input_output(g38);
+        PinDriver::input_output(g37);
+        PinDriver::input_output(g36);
+        PinDriver::input_output(g35);
+        PinDriver::input_output(g44);
+        PinDriver::input_output(g43);
+        PinDriver::input_output(g48);
+        PinDriver::input_output(g47);
+        }
+        //pd.set_high();
+        //drop(pd);
     }
 
     /*
@@ -80,7 +106,7 @@ fn main() -> Result<(), EspError> {
 
     log::info!("init screen!");
 
-    let mut screen = ass::ili9341::ILI9341::new(peripherals.pins);
+    let mut screen = ass::ili9341::ILI9341::new(/*peripherals.pins*/);
 
     let timeno = SystemTime::now();
 
