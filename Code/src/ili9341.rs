@@ -134,20 +134,23 @@ pub struct Pinacolada(gpio::PinDriver<'static, AnyIOPin, InputOutput>);
 pub struct ILI9341 {
     dc_state: bool,
     last_data: u8, //gpio: esp32s3::GPIO,
+                   /*
     d: [Pinacolada; 8],
     rd: Pinacolada,
     wr: Pinacolada,
     cd: Pinacolada,
     cs: Pinacolada,
     reset: Pinacolada,
+    */
 }
 
 impl ILI9341 {
-    pub fn new(pins: Pins) -> ILI9341 {
+    pub fn new(/*pins: Pins*/) -> ILI9341 {
         let mut res = Self {
             dc_state: true,
 
             last_data: 0, //gpio: unsafe { esp32s3::Peripherals::steal() }.GPIO,
+                          /*
             d: [
                 Pinacolada(take_pin!(pins.gpio42)),
                 Pinacolada(take_pin!(pins.gpio41)),
@@ -165,6 +168,7 @@ impl ILI9341 {
 
             cd: Pinacolada(take_pin!(pins.gpio48)),
             cs: Pinacolada(take_pin!(pins.gpio47)),
+            */
         };
 
         unsafe {
@@ -176,11 +180,11 @@ impl ILI9341 {
             gpio_set_direction(37, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
             gpio_set_direction(36, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
             gpio_set_direction(35, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
-            gpio_set_direction(44, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
-            gpio_set_direction(43, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
+            gpio_set_direction(44, gpio_mode_t_GPIO_MODE_OUTPUT);
+            gpio_set_direction(43, gpio_mode_t_GPIO_MODE_OUTPUT);
             //gpio_set_direction(0, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
-            gpio_set_direction(48, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
-            gpio_set_direction(47, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
+            gpio_set_direction(48, gpio_mode_t_GPIO_MODE_OUTPUT);
+            gpio_set_direction(47, gpio_mode_t_GPIO_MODE_OUTPUT);
         };
 
         let gpio = unsafe { esp32s3::Peripherals::steal() }.GPIO;
@@ -424,66 +428,9 @@ impl ILI9341 {
             .write_data(0x00)
             .write_data(0x18)
     }
-
-    /*
-    #[inline]
-    pub fn write_command(&mut self, command: u8) -> &mut Self {
-        self.set_command().start_write().write8(command).submit()
-    }
-
-    #[inline]
-    pub fn write_data(&mut self, data: u8) -> &mut Self {
-        self.set_data().start_write().write8(data).submit()
-    }
-    */
 }
 
 impl ILI9341 {
-    /*
-    pub fn start_write(&mut self) -> &mut ILI9341 {
-        self.wr.0.set_low().unwrap();
-
-        self.cs.0.set_low().unwrap();
-
-        self
-    }
-
-    pub fn start_read(&mut self) -> &mut ILI9341 {
-        self.rd.0.set_low().unwrap();
-
-        self.cs.0.set_low().unwrap();
-
-        self
-    }
-
-    pub fn submit(&mut self) -> &mut Self {
-        self.rd.0.set_high().unwrap();
-        self.wr.0.set_high().unwrap();
-        self
-    }
-
-    pub fn set_data(&mut self) -> &mut Self {
-        self.wr.0.set_high().unwrap();
-        self.rd.0.set_high().unwrap();
-
-        self.cd.0.set_high().unwrap();
-
-        self
-    }
-    pub fn set_command(&mut self) -> &mut Self {
-        self.cs.0.set_low().unwrap();
-
-        self.wr.0.set_high().unwrap();
-        self.rd.0.set_high().unwrap();
-
-        self.cd.0.set_low().unwrap();
-
-        self
-    }
-    fn get_databus_mut(&mut self) -> &mut [Pin] {
-        &mut self.d
-    }
-    */
 
     fn write8(&mut self, data: u8) -> &mut Self {
         let gpio = unsafe { esp32s3::Peripherals::steal() }.GPIO;
@@ -507,25 +454,6 @@ impl ILI9341 {
         //set wr pin
         gpio.out1_w1ts()
             .write(|w| unsafe { w.bits(0b1_0000_0000_000) });
-
-        /*
-        let bus = self.get_databus_mut();
-        for i in 0..=7 {
-            // Shift by n and take only last bit
-            // E.g. in 10110110
-            //           ^ To grab the 5th element (starting by 0)
-            // shl: 5  xxxxx101
-            //                ^ the wanted element is now the last
-            // and grab just the last bit (& 1)
-            //
-            // 20h -> 32 -> 10_0000
-            if data >> i & 1 == 1 {
-                bus[i].0.set_high().unwrap();
-            } else {
-                bus[i].0.set_low().unwrap();
-            }
-        }
-        */
 
         self
     }
