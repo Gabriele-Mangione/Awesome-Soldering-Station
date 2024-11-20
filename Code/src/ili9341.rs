@@ -12,10 +12,10 @@ use embedded_graphics::prelude::{Dimensions, DrawTarget, IntoStorage, Point, Rgb
 use embedded_graphics::primitives::{Primitive, PrimitiveStyle, Rectangle, Triangle};
 use embedded_graphics::{Drawable, Pixel};
 use esp32s3::gpio::out1_w1tc;
-use esp_idf_hal::gpio::Pins;
 use esp_idf_hal::gpio::Pin;
+use esp_idf_hal::gpio::Pins;
 use esp_idf_hal::peripheral::Peripheral;
-use esp_idf_hal::sys::*; 
+use esp_idf_hal::sys::*;
 
 pub const WIDTH: usize = 320;
 pub const HEIGHT: usize = 240;
@@ -134,12 +134,12 @@ pub struct Pinacolada(gpio::PinDriver<'static, AnyIOPin, InputOutput>);
 pub struct ILI9341 {
     dc_state: bool,
     last_data: u8, //gpio: esp32s3::GPIO,
-                   d: [Pinacolada; 8],
-                   rd: Pinacolada,
-                   wr: Pinacolada,
-                   cd: Pinacolada,
-                   cs: Pinacolada,
-                   reset: Pinacolada,
+    d: [Pinacolada; 8],
+    rd: Pinacolada,
+    wr: Pinacolada,
+    cd: Pinacolada,
+    cs: Pinacolada,
+    reset: Pinacolada,
 }
 
 impl ILI9341 {
@@ -148,23 +148,23 @@ impl ILI9341 {
             dc_state: true,
 
             last_data: 0, //gpio: unsafe { esp32s3::Peripherals::steal() }.GPIO,
-                          d: [
-                              Pinacolada(take_pin!(pins.gpio42)),
-                              Pinacolada(take_pin!(pins.gpio41)),
-                              Pinacolada(take_pin!(pins.gpio40)),
-                              Pinacolada(take_pin!(pins.gpio39)),
-                              Pinacolada(take_pin!(pins.gpio38)),
-                              Pinacolada(take_pin!(pins.gpio37)),
-                              Pinacolada(take_pin!(pins.gpio36)),
-                              Pinacolada(take_pin!(pins.gpio35)),
-                          ],
-                          rd: Pinacolada(take_pin!(pins.gpio44)),
-                          wr: Pinacolada(take_pin!(pins.gpio43)),
+            d: [
+                Pinacolada(take_pin!(pins.gpio42)),
+                Pinacolada(take_pin!(pins.gpio41)),
+                Pinacolada(take_pin!(pins.gpio40)),
+                Pinacolada(take_pin!(pins.gpio39)),
+                Pinacolada(take_pin!(pins.gpio38)),
+                Pinacolada(take_pin!(pins.gpio37)),
+                Pinacolada(take_pin!(pins.gpio36)),
+                Pinacolada(take_pin!(pins.gpio35)),
+            ],
+            rd: Pinacolada(take_pin!(pins.gpio44)),
+            wr: Pinacolada(take_pin!(pins.gpio43)),
 
-                          reset: Pinacolada(take_pin!(pins.gpio0)),
+            reset: Pinacolada(take_pin!(pins.gpio0)),
 
-                          cd: Pinacolada(take_pin!(pins.gpio48)),
-                          cs: Pinacolada(take_pin!(pins.gpio47)),
+            cd: Pinacolada(take_pin!(pins.gpio48)),
+            cs: Pinacolada(take_pin!(pins.gpio47)),
         };
 
         unsafe {
@@ -190,7 +190,8 @@ impl ILI9341 {
         //gpio.enable_w1ts().write(|w| unsafe { w.bits(0x1) });
 
         //set all pins high
-        gpio.out1_w1ts().write(|w| unsafe { w.bits(0b110011 << 11) });
+        gpio.out1_w1ts()
+            .write(|w| unsafe { w.bits(0b110011 << 11) });
         //gpio.out_w1ts().write(|w| unsafe { w.bits(1) });
 
         std::thread::sleep(Duration::from_secs(1));
@@ -498,9 +499,9 @@ impl ILI9341 {
             gpio.out1_w1ts().write(|w| unsafe { w.bits(result) });
 
             self.last_data = data;
-        }
-        else{
-            gpio.out1_w1tc().write(|w| unsafe { w.bits(0b1_0000_0000_000) });
+        } else {
+            gpio.out1_w1tc()
+                .write(|w| unsafe { w.bits(0b1_0000_0000_000) });
         }
 
         //set wr pin
