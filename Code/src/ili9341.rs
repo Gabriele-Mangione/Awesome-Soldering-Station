@@ -171,6 +171,7 @@ impl ILI9341 {
                           cs: Pinacolada(take_pin!(pins.gpio47)),
                           */
         };
+        /*
         let mut what: i32;
 
         unsafe {
@@ -193,6 +194,7 @@ impl ILI9341 {
             let c_st = c_string.to_string_lossy();
             log::info!("res: {}", c_st.to_string());
         }
+        */
 
         let gpio = unsafe { esp32s3::Peripherals::steal() }.GPIO;
 
