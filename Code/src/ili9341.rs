@@ -204,7 +204,7 @@ impl ILI9341 {
         gpio.out1_w1ts().write(|w| unsafe { w.bits(0x19800) });
         //gpio.out_w1ts().write(|w| unsafe { w.bits(1) });
 
-        std::thread::sleep(Duration::from_secs(1));
+        //std::thread::sleep(Duration::from_secs(1));
 
         /*
         res.rd.0.set_high().unwrap();
@@ -219,7 +219,7 @@ impl ILI9341 {
 
         res.software_reset();
 
-        std::thread::sleep(Duration::from_secs(1));
+        //std::thread::sleep(Duration::from_secs(1));
 
         res.power_control_a()
             .power_control_b()

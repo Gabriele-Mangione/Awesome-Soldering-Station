@@ -15,7 +15,7 @@ pub struct PDO {
     pub current: u16,
 }
 
-impl /*From<&[u8; 4]> for*/ PDO {
+impl PDO {
     fn from(data: &[u8; 4], id: u8) -> Self {
         Self {
             id,
@@ -36,10 +36,7 @@ impl<'a> Fusb<'a> {
 }
 
 impl Fusb<'_> {
-    pub fn scan_pds(
-        &mut self
-    ) -> Result<Vec<PDO>, EspError> {
-
+    pub fn scan_pds(&mut self) -> Result<Vec<PDO>, EspError> {
         let mut pdo_vec: Vec<PDO> = Vec::new();
 
         // Reset: SW_RES and PD_RES
@@ -81,13 +78,11 @@ impl Fusb<'_> {
         //set cc pin as data line
         self.write_reg(0x03, switches1)?;
 
+        //return Ok(pdo_vec);
         //set auto crc separately (voltage goes to 0 if done together with previous)
         switches1 |= 0x04;
-        self.write_reg(0x03, switches1)?;
-
-        //set auto crc separately (voltage goes to 0 if done together with previous)
-        switches1 |= 0x04;
-        self.write_reg(0x03, switches1)?;
+        //self.write_reg(0x03, switches1)?; //CRASHES HERE!!!!
+        //return Ok(pdo_vec);
 
         // Control0: flush FIFO TX buffer
         self.write_reg(0x06, 0x44)?;
@@ -118,7 +113,7 @@ impl Fusb<'_> {
         self.read_bmc(&mut header_sops)?;
 
         // mask PDO amount
-        let message_size :u8 = (header_sops[2] >> 4) & 0x07;
+        let message_size: u8 = (header_sops[2] >> 4) & 0x07;
         //let mut pdo: PDO = PDO::from(&[0u8;4]);
         //let mut index_pdo: u8 = 255;
 
@@ -149,7 +144,7 @@ impl Fusb<'_> {
 
         Ok(pdo_vec)
 
-            /*
+        /*
         //select pdo for power
         self.request_pdo(&index_pdo, current_mA, 3000)?;
 
