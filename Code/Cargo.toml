@@ -29,6 +29,7 @@ esp-idf-svc = { version = "0.48", default-features = false }
 embedded-graphics = "0.8.1"
 esp-idf-hal = "0.43.1"
 esp32s3 = "0.25.0"
+itertools = "0.13.0"
 
 [build-dependencies]
 embuild = "0.31.3"

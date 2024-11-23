@@ -1,7 +1,7 @@
 #![allow(unused)]
 
 use core::time;
-use std::{borrow::BorrowMut, ops::Deref, thread, time::SystemTime};
+use std::{borrow::BorrowMut, marker::PhantomData, ops::Deref, thread, time::SystemTime};
 
 use embedded_graphics::{
     mono_font::{ascii::FONT_6X12, iso_8859_10::FONT_10X20, MonoTextStyle},
@@ -81,7 +81,7 @@ fn main() -> Result<(), EspError> {
 
     //draw black screen
     Rectangle::new(Point::new(0, 0), Size::new(320, 240))
-        .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK))
+        .into_styled(PrimitiveStyle::with_fill(ass::MyColor(0, 0)))
         .draw(&mut screen);
 
     let timepassed = SystemTime::now().duration_since(timeno).unwrap();
@@ -110,7 +110,7 @@ fn main() -> Result<(), EspError> {
 
     */
     let mut pdo_vec: Vec<fusb302::PDO> = vec![];
-    let mut style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
+    let mut style = MonoTextStyle::new(&FONT_10X20, ass::MyColor(255, 255));
     {
         let sda = unsafe { peripherals.pins.gpio5.clone_unchecked() };
         let scl = unsafe { peripherals.pins.gpio4.clone_unchecked() };
@@ -135,7 +135,7 @@ fn main() -> Result<(), EspError> {
         log::info!("done");
     }
 
-    style.set_background_color(Some(Rgb565::BLACK));
+    style.set_background_color(Some(ass::MyColor(0, 0)));
 
     let st = format!("pdo amount: {}", pdo_vec.len());
     Text::new(&st, Point::new(50, 75), style).draw(&mut screen);
@@ -153,5 +153,43 @@ fn main() -> Result<(), EspError> {
         //let p = ts.get_y()?;
         thread::sleep_ms(100);
         //log::info!("touch!{}", p);
+    }
+
+    let d: Door<Closed> = Door {
+        s: PhantomData::default(),
+    };
+
+}
+
+struct Open;
+struct Closed;
+
+struct Door<State> {
+    s: PhantomData<State>,
+}
+
+impl<T> Door<T> {
+    fn mamamamama(&self) {
+    }
+    
+}
+
+impl Door<Open> {
+    fn close(&self) -> Door<Closed> {
+        Door {
+            s: PhantomData::default(),
+        }
+    }
+
+    fn open(&self) -> () {
+        ()
+    }
+}
+
+impl Door<Closed> {
+    fn open(&self) -> Door<Open> {
+        Door {
+            s: PhantomData::default(),
+        }
     }
 }

@@ -2,6 +2,7 @@ use std::borrow::BorrowMut;
 use std::f32::consts::PI;
 use std::ops::Shr;
 use std::ptr::write_volatile;
+use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::SystemTime;
 use std::{fmt::Debug, time::Duration};
@@ -17,6 +18,7 @@ use esp_idf_hal::gpio::Pin;
 use esp_idf_hal::gpio::Pins;
 use esp_idf_hal::peripheral::Peripheral;
 use esp_idf_hal::sys::*;
+use itertools::Itertools;
 use std::ffi::*;
 
 const ENABLE1_W1TS_ADDR: *mut u32 = 0x60004030 as *mut u32;
@@ -140,16 +142,16 @@ pub struct Pinacolada(gpio::PinDriver<'static, AnyIOPin, InputOutput>);
 
 pub struct ILI9341 {
     dc_state: bool,
-    last_data: u8, 
+    last_data: u8,
     //gpio: esp32s3::GPIO,
-                   /*
-                   d: [Pinacolada; 8],
-                   rd: Pinacolada,
-                   wr: Pinacolada,
-                   cd: Pinacolada,
-                   cs: Pinacolada,
-                   reset: Pinacolada,
-                   */
+    /*
+    d: [Pinacolada; 8],
+    rd: Pinacolada,
+    wr: Pinacolada,
+    cd: Pinacolada,
+    cs: Pinacolada,
+    reset: Pinacolada,
+    */
 }
 
 impl ILI9341 {
@@ -157,27 +159,27 @@ impl ILI9341 {
         let mut res = Self {
             dc_state: true,
 
-            last_data: 0, 
+            last_data: 0,
             //gpio: unsafe { esp32s3::Peripherals::steal() }.GPIO,
-                          /*
-                          d: [
-                              Pinacolada(take_pin!(pins.gpio42)),
-                              Pinacolada(take_pin!(pins.gpio41)),
-                              Pinacolada(take_pin!(pins.gpio40)),
-                              Pinacolada(take_pin!(pins.gpio39)),
-                              Pinacolada(take_pin!(pins.gpio38)),
-                              Pinacolada(take_pin!(pins.gpio37)),
-                              Pinacolada(take_pin!(pins.gpio36)),
-                              Pinacolada(take_pin!(pins.gpio35)),
-                          ],
-                          rd: Pinacolada(take_pin!(pins.gpio44)),
-                          wr: Pinacolada(take_pin!(pins.gpio43)),
+            /*
+            d: [
+                Pinacolada(take_pin!(pins.gpio42)),
+                Pinacolada(take_pin!(pins.gpio41)),
+                Pinacolada(take_pin!(pins.gpio40)),
+                Pinacolada(take_pin!(pins.gpio39)),
+                Pinacolada(take_pin!(pins.gpio38)),
+                Pinacolada(take_pin!(pins.gpio37)),
+                Pinacolada(take_pin!(pins.gpio36)),
+                Pinacolada(take_pin!(pins.gpio35)),
+            ],
+            rd: Pinacolada(take_pin!(pins.gpio44)),
+            wr: Pinacolada(take_pin!(pins.gpio43)),
 
-                          reset: Pinacolada(take_pin!(pins.gpio0)),
+            reset: Pinacolada(take_pin!(pins.gpio0)),
 
-                          cd: Pinacolada(take_pin!(pins.gpio48)),
-                          cs: Pinacolada(take_pin!(pins.gpio47)),
-                          */
+            cd: Pinacolada(take_pin!(pins.gpio48)),
+            cs: Pinacolada(take_pin!(pins.gpio47)),
+            */
         };
         /*
         let mut what: i32;
@@ -209,11 +211,15 @@ impl ILI9341 {
         //enable pin registers
         //gpio.enable1_w1ts().write(|w| unsafe { w.bits(0x19FF8) });
         //gpio.enable_w1ts().write(|w| unsafe { w.bits(0x1) });
-            unsafe {write_volatile(ENABLE1_W1TS_ADDR, 0x19FF8);}
+        unsafe {
+            write_volatile(ENABLE1_W1TS_ADDR, 0x19FF8);
+        }
 
         //set all pins high
         //gpio.out1_w1ts().write(|w| unsafe { w.bits(0x19800) });
-            unsafe {write_volatile(OUT1_W1TS_ADDR, 0x19800);}
+        unsafe {
+            write_volatile(OUT1_W1TS_ADDR, 0x19800);
+        }
         //gpio.out_w1ts().write(|w| unsafe { w.bits(1) });
 
         //std::thread::sleep(Duration::from_secs(1));
@@ -228,7 +234,9 @@ impl ILI9341 {
 
         //set cs low
         //gpio.out1_w1tc().write(|w| unsafe { w.bits(1 << 15) });
-            unsafe {write_volatile(OUT1_W1TC_ADDR, 1<<15);}
+        unsafe {
+            write_volatile(OUT1_W1TC_ADDR, 1 << 15);
+        }
 
         res.software_reset();
 
@@ -451,36 +459,23 @@ impl ILI9341 {
 
 impl ILI9341 {
     fn write8(&mut self, data: u8) -> &mut Self {
-
-
-        unsafe {
-
-
-
         if data != self.last_data {
             let result = ((data.reverse_bits() as u32) << 3);
-            //let mask = 0b111111111000;
-            //p.GPIO.out1().modify(|r, w| unsafe { w.bits((r.bits() & !mask) | (mask & result)) });
-
             let inv_result = (((!data.reverse_bits()) as u32) << 3) + 0b1_0000_0000_000;
             //set and clear data and clear wr pin
-            //
-            write_volatile(OUT1_W1TC_ADDR, inv_result);
-            write_volatile(OUT1_W1TS_ADDR, result);
-            /*
-            self.gpio.out1_w1tc().write(|w| unsafe { w.bits(inv_result) });
-            self.gpio.out1_w1ts().write(|w| unsafe { w.bits(result) });
-            */
-
-            //self.gpio.out1_w1ts().write(|w| unsafe { w.bits(0) });
-            //self.last_data = data;
+            unsafe {
+                write_volatile(OUT1_W1TS_ADDR, result);
+                write_volatile(OUT1_W1TC_ADDR, inv_result);
+            }
+            self.last_data = data;
         } else {
-            //self.gpio.out1_w1tc().write(|w| unsafe { w.bits(0b1_0000_0000_000) });
-            write_volatile(OUT1_W1TC_ADDR, 0b1_0000_0000_000);
+            unsafe {
+                write_volatile(OUT1_W1TC_ADDR, 0b1_0000_0000_000);
+            }
         }
 
         //set wr pin
-        //self.gpio.out1_w1ts().write(|w| unsafe { w.bits(0b1_0000_0000_000) });
+        unsafe {
             write_volatile(OUT1_W1TS_ADDR, 0b1_0000_0000_000);
         }
 
@@ -491,7 +486,7 @@ impl ILI9341 {
         //set dc to send command
         if self.dc_state == true {
             self.dc_state = false;
-            unsafe { write_volatile(OUT1_W1TC_ADDR, 1 << 16)};
+            unsafe { write_volatile(OUT1_W1TC_ADDR, 1 << 16) };
         }
 
         self.write8(cmd)
@@ -500,10 +495,18 @@ impl ILI9341 {
         //clear dc to send data
         if self.dc_state == false {
             self.dc_state = true;
-            unsafe { write_volatile(OUT1_W1TS_ADDR, 1 << 16)};
+            unsafe { write_volatile(OUT1_W1TS_ADDR, 1 << 16) };
         }
 
         self.write8(data)
+    }
+
+    fn repeat(&mut self) -> &mut Self {
+        unsafe {
+            write_volatile(OUT1_W1TC_ADDR, 0b1_0000_0000_000);
+            write_volatile(OUT1_W1TS_ADDR, 0b1_0000_0000_000);
+        }
+        self
     }
 
     fn read_data(&mut self) -> u8 {
@@ -528,7 +531,7 @@ impl Dimensions for ILI9341 {
 }
 
 impl DrawTarget for ILI9341 {
-    type Color = Rgb565;
+    type Color = super::MyColor;
     type Error = ();
 
     fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
@@ -559,9 +562,9 @@ impl DrawTarget for ILI9341 {
             //write 16 bit color to memory
             //self.write_command(MEMORY_WRITE).write_data(color.into_storage().checked_shr(8).unwrap() as u8).write_data((color.into_storage() & 0xFF) as u8);
 
-            self.write_command(MEMORY_WRITE)
-                .write_data(((color.r() << 3) | (color.g() >> 3)) as u8)
-                .write_data(((color.g() << 5) | (color.b())) as u8);
+            //self.write_command(MEMORY_WRITE)
+            //   .write_data(((color.r() << 3) | (color.g() >> 3)) as u8)
+            //  .write_data(((color.g() << 5) | (color.b())) as u8);
         }
 
         Ok(())
@@ -591,38 +594,12 @@ impl DrawTarget for ILI9341 {
 
         self.write_command(MEMORY_WRITE);
 
-        //if fill solid is used color iter will be repeated:
-        /*
-        fn fill_solid(&mut self, area: &Rectangle, color: Self::Color) -> Result<(), Self::Error> {
-            self.fill_contiguous(area, core::iter::repeat(color))
-        }
-        */
         let mut color_iter = colors.into_iter();
-        for pix in 0..(area.size.width * area.size.height) {
-            let color = color_iter.next().unwrap();
-            // self.wr.0.set_low().unwrap();
-            self.write_data(color.to_ne_bytes()[1]);
 
-            /*
-            let p = unsafe { esp32s3::Peripherals::steal() };
-            p.GPIO.out1_w1ts().write(|w| unsafe { w.bits(0b1_0000_0000_000) });
-            */
-            //self.wr.0.set_high().unwrap();
-            // self.wr.0.set_low().unwrap();
-            self.write_data(color.to_ne_bytes()[0]);
-            //p.GPIO.out1_w1ts().write(|w| unsafe { w.bits(0b1_0000_0000_000) });
-            //self.wr.0.set_high().unwrap();
+        for color in color_iter.take((area.size.width * area.size.height) as usize) {
+            self.write_data(color.0);
+            self.write_data(color.1);
         }
-        /*
-        for color in colors {
-            self.write_data(((color.r() << 3) | (color.g() >> 3)) as u8)
-                .write_data(((color.g() << 5) | (color.b() >> 3)) as u8);
-            log::info!("for loop inside");
-            thread::sleep_ms(10);
-
-        }
-        */
-        //log::info!("for loop over");
         Ok(())
     }
 }
