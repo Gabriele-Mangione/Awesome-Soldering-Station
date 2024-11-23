@@ -1,3 +1,4 @@
+#![allow(unused)]
 
 pub mod fusb302;
 pub mod ili9341;

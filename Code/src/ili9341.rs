@@ -1,6 +1,7 @@
 use std::borrow::BorrowMut;
 use std::f32::consts::PI;
 use std::ops::Shr;
+use std::ptr::write_volatile;
 use std::thread;
 use std::time::SystemTime;
 use std::{fmt::Debug, time::Duration};
@@ -134,7 +135,8 @@ pub struct Pinacolada(gpio::PinDriver<'static, AnyIOPin, InputOutput>);
 
 pub struct ILI9341 {
     dc_state: bool,
-    last_data: u8, //gpio: esp32s3::GPIO,
+    last_data: u8, 
+    gpio: esp32s3::GPIO,
                    /*
                    d: [Pinacolada; 8],
                    rd: Pinacolada,
@@ -150,7 +152,8 @@ impl ILI9341 {
         let mut res = Self {
             dc_state: true,
 
-            last_data: 0, //gpio: unsafe { esp32s3::Peripherals::steal() }.GPIO,
+            last_data: 0, 
+            gpio: unsafe { esp32s3::Peripherals::steal() }.GPIO,
                           /*
                           d: [
                               Pinacolada(take_pin!(pins.gpio42)),
@@ -283,7 +286,7 @@ impl ILI9341 {
 
     #[inline]
     pub fn power_control_b(&mut self) -> &mut Self {
-        // Page 195, the parameters are exact those
+        // Page 196, the parameters are exact those
         self.write_command(POWER_CONTROL_A)
             .write_data(0x39)
             .write_data(0x2C)
@@ -440,7 +443,15 @@ impl ILI9341 {
 
 impl ILI9341 {
     fn write8(&mut self, data: u8) -> &mut Self {
-        let gpio = unsafe { esp32s3::Peripherals::steal() }.GPIO;
+
+
+        unsafe {
+            let out1_w1ts_addr: *mut u32 = 0x60004014 as *mut u32;
+            let out1_w1tc_addr: *mut u32 = 0x60004018 as *mut u32;
+
+            let mut out1_w1ts_= *out1_w1ts_addr;
+            let mut out1_w1tc_= *out1_w1tc_addr;
+
 
         if data != self.last_data {
             let result = ((data.reverse_bits() as u32) << 3);
@@ -449,18 +460,25 @@ impl ILI9341 {
 
             let inv_result = (((!data.reverse_bits()) as u32) << 3) + 0b1_0000_0000_000;
             //set and clear data and clear wr pin
-            gpio.out1_w1tc().write(|w| unsafe { w.bits(inv_result) });
-            gpio.out1_w1ts().write(|w| unsafe { w.bits(result) });
+            //
+            /*
+            write_volatile(out1_w1tc_addr, inv_result);
+            write_volatile(out1_w1ts_addr, result);
+            */
+            self.gpio.out1_w1tc().write(|w| unsafe { w.bits(inv_result) });
+            self.gpio.out1_w1ts().write(|w| unsafe { w.bits(result) });
 
-            self.last_data = data;
+            //self.gpio.out1_w1ts().write(|w| unsafe { w.bits(0) });
+            //self.last_data = data;
         } else {
-            gpio.out1_w1tc()
-                .write(|w| unsafe { w.bits(0b1_0000_0000_000) });
+            self.gpio.out1_w1tc().write(|w| unsafe { w.bits(0b1_0000_0000_000) });
+            //write_volatile(out1_w1tc_addr, 0b1_0000_0000_000);
         }
 
         //set wr pin
-        gpio.out1_w1ts()
-            .write(|w| unsafe { w.bits(0b1_0000_0000_000) });
+        self.gpio.out1_w1ts().write(|w| unsafe { w.bits(0b1_0000_0000_000) });
+            //write_volatile(out1_w1ts_addr, 0b1_0000_0000_000);
+        }
 
         self
     }
@@ -591,7 +609,7 @@ impl DrawTarget for ILI9341 {
             p.GPIO.out1_w1ts().write(|w| unsafe { w.bits(0b1_0000_0000_000) });
             */
             //self.wr.0.set_high().unwrap();
-            /// self.wr.0.set_low().unwrap();
+            // self.wr.0.set_low().unwrap();
             self.write_data(color.to_ne_bytes()[0]);
             //p.GPIO.out1_w1ts().write(|w| unsafe { w.bits(0b1_0000_0000_000) });
             //self.wr.0.set_high().unwrap();

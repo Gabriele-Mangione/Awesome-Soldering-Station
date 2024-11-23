@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use core::time;
 use std::{borrow::BorrowMut, ops::Deref, thread, time::SystemTime};
 
@@ -108,6 +110,7 @@ fn main() -> Result<(), EspError> {
 
     */
     let mut pdo_vec: Vec<fusb302::PDO> = vec![];
+    let mut style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
     {
         let sda = unsafe { peripherals.pins.gpio5.clone_unchecked() };
         let scl = unsafe { peripherals.pins.gpio4.clone_unchecked() };
@@ -126,12 +129,12 @@ fn main() -> Result<(), EspError> {
             let found_pdo = pdo_vec.iter().find(|&&x| x.voltage == 9000);
             if found_pdo.is_some() {
                 fusb.request_pdo(*found_pdo.unwrap(), 3000, 3000)?;
+                Text::new("A PDO has been requested", Point::new(50, 170), style).draw(&mut screen);
             }
         }
         log::info!("done");
     }
 
-    let mut style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
     style.set_background_color(Some(Rgb565::BLACK));
 
     let st = format!("pdo amount: {}", pdo_vec.len());
