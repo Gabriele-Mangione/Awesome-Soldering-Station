@@ -19,6 +19,11 @@ use esp_idf_hal::peripheral::Peripheral;
 use esp_idf_hal::sys::*;
 use std::ffi::*;
 
+const ENABLE1_W1TS_ADDR: *mut u32 = 0x60004030 as *mut u32;
+//const ENABLE1_W1TC_ADDR: *mut u32 = 0x600040 as *mut u32;
+const OUT1_W1TS_ADDR: *mut u32 = 0x60004014 as *mut u32;
+const OUT1_W1TC_ADDR: *mut u32 = 0x60004018 as *mut u32;
+
 pub const WIDTH: usize = 320;
 pub const HEIGHT: usize = 240;
 
@@ -136,7 +141,7 @@ pub struct Pinacolada(gpio::PinDriver<'static, AnyIOPin, InputOutput>);
 pub struct ILI9341 {
     dc_state: bool,
     last_data: u8, 
-    gpio: esp32s3::GPIO,
+    //gpio: esp32s3::GPIO,
                    /*
                    d: [Pinacolada; 8],
                    rd: Pinacolada,
@@ -153,7 +158,7 @@ impl ILI9341 {
             dc_state: true,
 
             last_data: 0, 
-            gpio: unsafe { esp32s3::Peripherals::steal() }.GPIO,
+            //gpio: unsafe { esp32s3::Peripherals::steal() }.GPIO,
                           /*
                           d: [
                               Pinacolada(take_pin!(pins.gpio42)),
@@ -202,11 +207,13 @@ impl ILI9341 {
         let gpio = unsafe { esp32s3::Peripherals::steal() }.GPIO;
 
         //enable pin registers
-        gpio.enable1_w1ts().write(|w| unsafe { w.bits(0x19FF8) });
+        //gpio.enable1_w1ts().write(|w| unsafe { w.bits(0x19FF8) });
         //gpio.enable_w1ts().write(|w| unsafe { w.bits(0x1) });
+            unsafe {write_volatile(ENABLE1_W1TS_ADDR, 0x19FF8);}
 
         //set all pins high
-        gpio.out1_w1ts().write(|w| unsafe { w.bits(0x19800) });
+        //gpio.out1_w1ts().write(|w| unsafe { w.bits(0x19800) });
+            unsafe {write_volatile(OUT1_W1TS_ADDR, 0x19800);}
         //gpio.out_w1ts().write(|w| unsafe { w.bits(1) });
 
         //std::thread::sleep(Duration::from_secs(1));
@@ -220,7 +227,8 @@ impl ILI9341 {
         */
 
         //set cs low
-        gpio.out1_w1tc().write(|w| unsafe { w.bits(1 << 15) });
+        //gpio.out1_w1tc().write(|w| unsafe { w.bits(1 << 15) });
+            unsafe {write_volatile(OUT1_W1TC_ADDR, 1<<15);}
 
         res.software_reset();
 
@@ -446,11 +454,7 @@ impl ILI9341 {
 
 
         unsafe {
-            let out1_w1ts_addr: *mut u32 = 0x60004014 as *mut u32;
-            let out1_w1tc_addr: *mut u32 = 0x60004018 as *mut u32;
 
-            let mut out1_w1ts_= *out1_w1ts_addr;
-            let mut out1_w1tc_= *out1_w1tc_addr;
 
 
         if data != self.last_data {
@@ -461,23 +465,23 @@ impl ILI9341 {
             let inv_result = (((!data.reverse_bits()) as u32) << 3) + 0b1_0000_0000_000;
             //set and clear data and clear wr pin
             //
+            write_volatile(OUT1_W1TC_ADDR, inv_result);
+            write_volatile(OUT1_W1TS_ADDR, result);
             /*
-            write_volatile(out1_w1tc_addr, inv_result);
-            write_volatile(out1_w1ts_addr, result);
-            */
             self.gpio.out1_w1tc().write(|w| unsafe { w.bits(inv_result) });
             self.gpio.out1_w1ts().write(|w| unsafe { w.bits(result) });
+            */
 
             //self.gpio.out1_w1ts().write(|w| unsafe { w.bits(0) });
             //self.last_data = data;
         } else {
-            self.gpio.out1_w1tc().write(|w| unsafe { w.bits(0b1_0000_0000_000) });
-            //write_volatile(out1_w1tc_addr, 0b1_0000_0000_000);
+            //self.gpio.out1_w1tc().write(|w| unsafe { w.bits(0b1_0000_0000_000) });
+            write_volatile(OUT1_W1TC_ADDR, 0b1_0000_0000_000);
         }
 
         //set wr pin
-        self.gpio.out1_w1ts().write(|w| unsafe { w.bits(0b1_0000_0000_000) });
-            //write_volatile(out1_w1ts_addr, 0b1_0000_0000_000);
+        //self.gpio.out1_w1ts().write(|w| unsafe { w.bits(0b1_0000_0000_000) });
+            write_volatile(OUT1_W1TS_ADDR, 0b1_0000_0000_000);
         }
 
         self
@@ -487,9 +491,7 @@ impl ILI9341 {
         //set dc to send command
         if self.dc_state == true {
             self.dc_state = false;
-            //self.cd.0.set_low().unwrap();
-            let gpio = unsafe { esp32s3::Peripherals::steal() }.GPIO;
-            gpio.out1_w1tc().write(|w| unsafe { w.bits(1 << 16) });
+            unsafe { write_volatile(OUT1_W1TC_ADDR, 1 << 16)};
         }
 
         self.write8(cmd)
@@ -498,10 +500,7 @@ impl ILI9341 {
         //clear dc to send data
         if self.dc_state == false {
             self.dc_state = true;
-            //self.cd.0.set_high().unwrap();
-            //let p = unsafe { esp32s3::Peripherals::steal() };
-            let gpio = unsafe { esp32s3::Peripherals::steal() }.GPIO;
-            gpio.out1_w1ts().write(|w| unsafe { w.bits(1 << 16) });
+            unsafe { write_volatile(OUT1_W1TS_ADDR, 1 << 16)};
         }
 
         self.write8(data)
