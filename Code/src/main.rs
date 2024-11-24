@@ -1,4 +1,3 @@
-#![allow(unused)]
 
 use core::time;
 use std::{borrow::BorrowMut, marker::PhantomData, ops::Deref, thread, time::SystemTime};
@@ -41,41 +40,8 @@ fn main() -> Result<(), EspError> {
     esp_idf_svc::log::EspLogger::initialize_default();
 
     let mut peripherals = Peripherals::take()?;
-    {
-        let reset_pin = unsafe { peripherals.pins.gpio0.clone_unchecked() };
-        unsafe {
-            let g41 = peripherals.pins.gpio41.clone_unchecked();
-            let g42 = peripherals.pins.gpio42.clone_unchecked();
-            let g40 = peripherals.pins.gpio40.clone_unchecked();
-            let g39 = peripherals.pins.gpio39.clone_unchecked();
-            let g38 = peripherals.pins.gpio38.clone_unchecked();
-            let g37 = peripherals.pins.gpio37.clone_unchecked();
-            let g36 = peripherals.pins.gpio36.clone_unchecked();
-            let g35 = peripherals.pins.gpio35.clone_unchecked();
-            let g44 = peripherals.pins.gpio44.clone_unchecked();
-            let g43 = peripherals.pins.gpio43.clone_unchecked();
-            let g48 = peripherals.pins.gpio48.clone_unchecked();
-            let g47 = peripherals.pins.gpio47.clone_unchecked();
-            let mut pd = PinDriver::input_output(reset_pin)?;
-            PinDriver::input_output(g41);
-            PinDriver::input_output(g42);
-            PinDriver::input_output(g40);
-            PinDriver::input_output(g39);
-            PinDriver::input_output(g38);
-            PinDriver::input_output(g37);
-            PinDriver::input_output(g36);
-            PinDriver::input_output(g35);
-            PinDriver::input_output(g44);
-            PinDriver::input_output(g43);
-            PinDriver::input_output(g48);
-            PinDriver::input_output(g47);
-            pd.set_high();
-        }
-        //drop(pd);
-    }
-
     log::info!("init screen!");
-    let mut screen = ass::ili9341::ILI9341::new(/*peripherals.pins*/);
+    let mut screen = ass::ili9341::ILI9341::new();
 
     let timeno = SystemTime::now();
 
@@ -154,11 +120,6 @@ fn main() -> Result<(), EspError> {
         thread::sleep_ms(100);
         //log::info!("touch!{}", p);
     }
-
-    let d: Door<Closed> = Door {
-        s: PhantomData::default(),
-    };
-
 }
 
 struct Open;

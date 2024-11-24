@@ -155,16 +155,16 @@ impl Fusb<'_> {
     pub fn request_pdo(
         &mut self,
         pdo: PDO,
-        current_mA: u16,
-        max_current_mA: u16,
+        current_milliampere: u16,
+        max_current_milliampere: u16,
     ) -> Result<(), EspError> {
         let sop_seq: &[u8] = &[0x12, 0x12, 0x12, 0x13, 0x86];
         let eop_seq: &[u8] = &[0xff, 0x14, 0xfe, 0xa1];
 
         let mut pdo_seq = [0u8; 6];
 
-        let max_current_bits: u16 = max_current_mA / 10;
-        let current_bits: u16 = current_mA / 10;
+        let max_current_bits: u16 = max_current_milliampere / 10;
+        let current_bits: u16 = current_milliampere / 10;
 
         let message_id: u8 = 0;
         pdo_seq[0] = 0x82;

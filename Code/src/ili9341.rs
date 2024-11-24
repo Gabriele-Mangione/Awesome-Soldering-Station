@@ -21,14 +21,19 @@ use esp_idf_hal::sys::*;
 use itertools::Itertools;
 use std::ffi::*;
 
+use esp_idf_hal::gpio::{self, AnyIOPin, InputOutput};
+use esp_idf_hal::prelude::Peripherals;
+
+//esp regs
 const ENABLE1_W1TS_ADDR: *mut u32 = 0x60004030 as *mut u32;
-//const ENABLE1_W1TC_ADDR: *mut u32 = 0x600040 as *mut u32;
+//const ENABLE1_W1TC_ADDR: *mut u32 = 0x600040xx as *mut u32;
 const OUT1_W1TS_ADDR: *mut u32 = 0x60004014 as *mut u32;
 const OUT1_W1TC_ADDR: *mut u32 = 0x60004018 as *mut u32;
 
 pub const WIDTH: usize = 320;
 pub const HEIGHT: usize = 240;
 
+//ili regs
 // https://cdn-shop.adafruit.com/datasheets/ILI9341.pdf
 const NOP: u8 = 0x00;
 const SOFTWARE_RESET: u8 = 0x01;
@@ -124,123 +129,49 @@ const POWER_ON_SEQUENCE_CONTROL: u8 = 0xED;
 const ENABLE_3G: u8 = 0xF2;
 const PUMP_RATIO_CONTROL: u8 = 0xF7;
 
-macro_rules! take_pin {
-    ($pin:expr, $mode:ident) => {
-        esp_idf_hal::gpio::PinDriver::$mode(Into::<esp_idf_hal::gpio::AnyIOPin>::into($pin))
-            .unwrap()
-    };
-    ($pin:expr) => {
-        take_pin!($pin, input_output)
-    };
-}
-
-use esp_idf_hal::gpio::{self, AnyIOPin, InputOutput};
-use esp_idf_hal::prelude::Peripherals;
-
-pub struct Pinacolada(gpio::PinDriver<'static, AnyIOPin, InputOutput>);
-//pub struct Pinacolada( AnyIOPin);
-
 pub struct ILI9341 {
     dc_state: bool,
     last_data: u8,
-    //gpio: esp32s3::GPIO,
-    /*
-    d: [Pinacolada; 8],
-    rd: Pinacolada,
-    wr: Pinacolada,
-    cd: Pinacolada,
-    cs: Pinacolada,
-    reset: Pinacolada,
-    */
 }
 
 impl ILI9341 {
-    pub fn new(/*pins: Pins*/) -> ILI9341 {
+    pub fn new() -> ILI9341 {
         let mut res = Self {
             dc_state: true,
 
             last_data: 0,
-            //gpio: unsafe { esp32s3::Peripherals::steal() }.GPIO,
-            /*
-            d: [
-                Pinacolada(take_pin!(pins.gpio42)),
-                Pinacolada(take_pin!(pins.gpio41)),
-                Pinacolada(take_pin!(pins.gpio40)),
-                Pinacolada(take_pin!(pins.gpio39)),
-                Pinacolada(take_pin!(pins.gpio38)),
-                Pinacolada(take_pin!(pins.gpio37)),
-                Pinacolada(take_pin!(pins.gpio36)),
-                Pinacolada(take_pin!(pins.gpio35)),
-            ],
-            rd: Pinacolada(take_pin!(pins.gpio44)),
-            wr: Pinacolada(take_pin!(pins.gpio43)),
-
-            reset: Pinacolada(take_pin!(pins.gpio0)),
-
-            cd: Pinacolada(take_pin!(pins.gpio48)),
-            cs: Pinacolada(take_pin!(pins.gpio47)),
-            */
         };
-        /*
-        let mut what: i32;
+
+        let mut what: i32 = 0;
 
         unsafe {
-            what = gpio_set_direction(42, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
-            what |= gpio_set_direction(41, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
-            what |= gpio_set_direction(40, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
-            what |= gpio_set_direction(39, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
-            what |= gpio_set_direction(38, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
-            what |= gpio_set_direction(37, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
-            what |= gpio_set_direction(36, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
-            what |= gpio_set_direction(35, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
-            what |= gpio_set_direction(44, gpio_mode_t_GPIO_MODE_OUTPUT);
-            what |= gpio_set_direction(43, gpio_mode_t_GPIO_MODE_OUTPUT);
-            //gpio_set_direction(0, gpio_mode_t_GPIO_MODE_INPUT_OUTPUT);
-            what |= gpio_set_direction(48, gpio_mode_t_GPIO_MODE_OUTPUT);
-            what |= gpio_set_direction(47, gpio_mode_t_GPIO_MODE_OUTPUT);
+            for n in [35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 47, 48] {
+                gpio_reset_pin(n);
+            }
         };
+
         unsafe {
             let c_string = CStr::from_ptr(esp_err_to_name(what));
             let c_st = c_string.to_string_lossy();
             log::info!("res: {}", c_st.to_string());
         }
-        */
 
         let gpio = unsafe { esp32s3::Peripherals::steal() }.GPIO;
 
-        //enable pin registers
-        //gpio.enable1_w1ts().write(|w| unsafe { w.bits(0x19FF8) });
-        //gpio.enable_w1ts().write(|w| unsafe { w.bits(0x1) });
         unsafe {
             write_volatile(ENABLE1_W1TS_ADDR, 0x19FF8);
         }
 
         //set all pins high
-        //gpio.out1_w1ts().write(|w| unsafe { w.bits(0x19800) });
         unsafe {
             write_volatile(OUT1_W1TS_ADDR, 0x19800);
         }
-        //gpio.out_w1ts().write(|w| unsafe { w.bits(1) });
-
-        //std::thread::sleep(Duration::from_secs(1));
-
-        /*
-        res.rd.0.set_high().unwrap();
-        res.wr.0.set_high().unwrap();
-        res.reset.0.set_high().unwrap();
-        res.cs.0.set_high().unwrap();
-        res.cd.0.set_high().unwrap();
-        */
-
         //set cs low
-        //gpio.out1_w1tc().write(|w| unsafe { w.bits(1 << 15) });
         unsafe {
             write_volatile(OUT1_W1TC_ADDR, 1 << 15);
         }
 
         res.software_reset();
-
-        //std::thread::sleep(Duration::from_secs(1));
 
         res.power_control_a()
             .power_control_b()
@@ -510,7 +441,6 @@ impl ILI9341 {
     }
 
     fn read_data(&mut self) -> u8 {
-        //let p = unsafe { esp32s3::Peripherals::steal() };
         //deactivate output
         let gpio = unsafe { esp32s3::Peripherals::steal() }.GPIO;
         gpio.enable1_w1tc().write(|w| unsafe { w.bits(0xFF << 3) });
@@ -560,11 +490,9 @@ impl DrawTarget for ILI9341 {
             }
 
             //write 16 bit color to memory
-            //self.write_command(MEMORY_WRITE).write_data(color.into_storage().checked_shr(8).unwrap() as u8).write_data((color.into_storage() & 0xFF) as u8);
-
-            //self.write_command(MEMORY_WRITE)
-            //   .write_data(((color.r() << 3) | (color.g() >> 3)) as u8)
-            //  .write_data(((color.g() << 5) | (color.b())) as u8);
+            self.write_command(MEMORY_WRITE)
+                .write_data(color.0)
+                .write_data(color.1);
         }
 
         Ok(())
@@ -578,8 +506,6 @@ impl DrawTarget for ILI9341 {
         let x2 = area.bottom_right().unwrap_or(area.top_left).x;
         let y1 = area.top_left.y;
         let y2 = area.bottom_right().unwrap_or(area.top_left).y;
-        //let huh = area.bottom_right().unwrap();
-        //log::info!("{}, {}, {}, {}", x1, x2, y1, y2);
 
         self.write_command(COLUMN_ADDRESS_SET)
             .write_data((x1 >> 8) as u8)
@@ -601,41 +527,5 @@ impl DrawTarget for ILI9341 {
             self.write_data(color.1);
         }
         Ok(())
-    }
-}
-
-impl Debug for ILI9341 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(
-            /*
-                        format!(
-                            "d = [
-                |7 6 5 4 3 2 1 0|
-                |{} {} {} {} {} {} {} {}|
-              ],
-              rd: {},
-              wr: {},
-              cd: {},
-              cs: {},
-              reset: {}
-            ",
-                            self.d[7].0.is_set_high() as i8,
-                            self.d[6].0.is_set_high() as i8,
-                            self.d[5].0.is_set_high() as i8,
-                            self.d[4].0.is_set_high() as i8,
-                            self.d[3].0.is_set_high() as i8,
-                            self.d[2].0.is_set_high() as i8,
-                            self.d[1].0.is_set_high() as i8,
-                            self.d[0].0.is_set_high() as i8,
-                            self.rd.0.is_set_high(),
-                            self.wr.0.is_set_high(),
-                            self.cd.0.is_set_high(),
-                            self.cs.0.is_set_high(),
-                            self.reset.0.is_set_high(),
-                        )
-                        .as_str(),
-                        */
-            "oh hello",
-        )
     }
 }

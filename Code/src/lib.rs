@@ -1,4 +1,5 @@
-#![allow(unused)]
+#![allow()]
+
 
 use embedded_graphics::{prelude::{PixelColor, RawData}, pixelcolor::raw::RawU16};
 
