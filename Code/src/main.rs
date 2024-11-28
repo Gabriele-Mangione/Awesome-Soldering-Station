@@ -1,4 +1,3 @@
-
 use core::time;
 use std::{borrow::BorrowMut, marker::PhantomData, ops::Deref, thread, time::SystemTime};
 
@@ -16,6 +15,7 @@ use embedded_graphics::{
 use esp_idf_hal::{
     gpio::{ADCPin, Pin, PinDriver},
     peripheral::Peripheral,
+    sys::gpio_set_level,
     units::MilliSeconds,
 };
 use esp_idf_svc::{
@@ -62,19 +62,6 @@ fn main() -> Result<(), EspError> {
     .draw(&mut screen);
     */
 
-    /*
-    log::info!("init touch!");
-    let yp = peripherals.pins.gpio1;
-    let xm = peripherals.pins.gpio2;
-    let ym = peripherals.pins.gpio14;
-    let xp = peripherals.pins.gpio13;
-
-    let xpa = xp.adc_channel();
-    let ypa = yp.adc_channel();
-
-    let mut ts = TouchBreakout::new(xp.into(), yp.into(), xm.into(), ym.into(), xpa, ypa);
-
-    */
     let mut pdo_vec: Vec<fusb302::PDO> = vec![];
     let mut style = MonoTextStyle::new(&FONT_10X20, ass::MyColor(255, 255));
     {
@@ -112,13 +99,35 @@ fn main() -> Result<(), EspError> {
     }
     Text::new("This is a text", Point::new(50, 50), style).draw(&mut screen);
 
+    log::info!("init touch!");
+    let yp = peripherals.pins.gpio1;
+    let xm = peripherals.pins.gpio2;
+    let ym = peripherals.pins.gpio14;
+    let xp = peripherals.pins.gpio13;
+
+    let xpa = xp.adc_channel();
+    let ypa = yp.adc_channel();
+
+    let mut ts = TouchBreakout::new(
+        xp.into(),
+        yp.into(),
+        xm.into(),
+        ym.into(),
+        xpa,
+        ypa,
+        320,
+        240,
+    );
+
+    let mut toggle = 0;
     loop {
         let time_stamp = SystemTime::now().duration_since(timeno).unwrap();
         let mut str = "This is a text ".to_owned() + &time_stamp.as_millis().to_string();
         Text::new(&str, Point::new(50, 50), style).draw(&mut screen);
-        //let p = ts.get_y()?;
+        let p1 = ts.get_x()?;
+        let p2 = ts.get_y()?;
         thread::sleep_ms(100);
-        //log::info!("touch!{}", p);
+        log::info!("x: {},\ty: {}", p1, p2);
     }
 }
 
@@ -130,9 +139,7 @@ struct Door<State> {
 }
 
 impl<T> Door<T> {
-    fn mamamamama(&self) {
-    }
-    
+    fn mamamamama(&self) {}
 }
 
 impl Door<Open> {
