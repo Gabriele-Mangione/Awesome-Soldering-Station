@@ -13,6 +13,7 @@ use embedded_graphics::{
     Drawable,
 };
 use esp_idf_hal::{
+    adc::{config::Config, AdcChannelDriver, AdcDriver},
     gpio::{ADCPin, Pin, PinDriver},
     peripheral::Peripheral,
     sys::gpio_set_level,
@@ -69,7 +70,12 @@ fn main() -> Result<(), EspError> {
         let scl = unsafe { peripherals.pins.gpio4.clone_unchecked() };
 
         let i2c_config = i2c::I2cConfig::new().baudrate(1000000.into()); //0 - 1MHz
-        let i2c_driver = i2c::I2cDriver::new(peripherals.i2c0, sda, scl, &i2c_config)?;
+        let i2c_driver = i2c::I2cDriver::new(
+            unsafe { peripherals.i2c0.clone_unchecked() },
+            sda,
+            scl,
+            &i2c_config,
+        )?;
 
         log::info!("init fusb!");
 
@@ -100,34 +106,34 @@ fn main() -> Result<(), EspError> {
     Text::new("This is a text", Point::new(50, 50), style).draw(&mut screen);
 
     log::info!("init touch!");
-    let yp = peripherals.pins.gpio1;
-    let xm = peripherals.pins.gpio2;
-    let ym = peripherals.pins.gpio14;
-    let xp = peripherals.pins.gpio13;
+    unsafe {
+        let xp = peripherals.pins.gpio1.clone_unchecked();
+        let ym = peripherals.pins.gpio2.clone_unchecked();
+        let xm = peripherals.pins.gpio14.clone_unchecked();
+        let yp = peripherals.pins.gpio13.clone_unchecked();
 
-    let xpa = xp.adc_channel();
-    let ypa = yp.adc_channel();
+        let mut ts = TouchBreakout::new(
+            xp.into(),
+            yp.into(),
+            xm.into(),
+            ym.into(),
+            320,
+            240,
+            peripherals,
+        );
 
-    let mut ts = TouchBreakout::new(
-        xp.into(),
-        yp.into(),
-        xm.into(),
-        ym.into(),
-        xpa,
-        ypa,
-        320,
-        240,
-    );
 
-    let mut toggle = 0;
-    loop {
-        let time_stamp = SystemTime::now().duration_since(timeno).unwrap();
-        let mut str = "This is a text ".to_owned() + &time_stamp.as_millis().to_string();
-        Text::new(&str, Point::new(50, 50), style).draw(&mut screen);
-        let p1 = ts.get_x()?;
-        let p2 = ts.get_y()?;
-        thread::sleep_ms(100);
-        log::info!("x: {},\ty: {}", p1, p2);
+        let mut toggle = 0;
+        loop {
+            let time_stamp = SystemTime::now().duration_since(timeno).unwrap();
+            let mut str = "This is a text ".to_owned() + &time_stamp.as_millis().to_string();
+            Text::new(&str, Point::new(50, 50), style).draw(&mut screen);
+            thread::sleep_ms(100);
+            let p1 = ts.get_x()?;
+            let p2 = ts.get_y()?;
+            thread::sleep_ms(1000);
+            log::info!("x: {},\ty: {}", p1, p2);
+        }
     }
 }
 
