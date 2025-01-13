@@ -30,8 +30,9 @@ pub struct TouchBreakout {
     y_adc: adc_channel_t,
     x_max: i32,
     y_max: i32,
-    x_adc_handle: adc_oneshot_unit_handle_t,
-    y_adc_handle: adc_oneshot_unit_handle_t
+    xp_adc_handle: adc_oneshot_unit_handle_t,
+    yp_adc_handle: adc_oneshot_unit_handle_t,
+    xm_adc_handle: adc_oneshot_unit_handle_t
 }
 
 impl TouchBreakout {
@@ -40,8 +41,9 @@ impl TouchBreakout {
         yp_pin: AnyIOPin,
         xm_pin: AnyIOPin,
         ym_pin: AnyIOPin,
-        x_adc: adc_channel_t,
-        y_adc: adc_channel_t,
+        xp_adc: adc_channel_t,
+        yp_adc: adc_channel_t,
+        xm_adc: adc_channel_t,
         x_max: i32,
         y_max: i32,
     ) -> TouchBreakout {
@@ -61,20 +63,28 @@ impl TouchBreakout {
             clk_src: 0,
             ulp_mode: 0,
         };
+        let init3_config: adc_oneshot_unit_init_cfg_t = adc_oneshot_unit_init_cfg_t {
+            unit_id: adc_unit_t_ADC_UNIT_3,
+            clk_src: 0,
+            ulp_mode: 0,
+        };
 
         let mut config: adc_oneshot_chan_cfg_t = adc_oneshot_chan_cfg_t {
             atten: adc_atten_t_ADC_ATTEN_DB_11,
             bitwidth: adc_bitwidth_t_ADC_BITWIDTH_DEFAULT,
         };
 
-        let mut x_adc_handle: adc_oneshot_unit_handle_t = std::ptr::null_mut();
-        let mut y_adc_handle: adc_oneshot_unit_handle_t = std::ptr::null_mut();
+        let mut xp_adc_handle: adc_oneshot_unit_handle_t = std::ptr::null_mut();
+        let mut yp_adc_handle: adc_oneshot_unit_handle_t = std::ptr::null_mut();
+        let mut xm_adc_handle: adc_oneshot_unit_handle_t = std::ptr::null_mut();
 
         unsafe {
-            adc_oneshot_new_unit(&init1_config, &mut y_adc_handle);
-            adc_oneshot_new_unit(&init2_config, &mut x_adc_handle);
-            adc_oneshot_config_channel(x_adc_handle, x_adc, &mut config);
-            adc_oneshot_config_channel(y_adc_handle, y_adc, &mut config);
+            adc_oneshot_new_unit(&init1_config, &mut yp_adc_handle);
+            adc_oneshot_new_unit(&init2_config, &mut xp_adc_handle);
+            adc_oneshot_new_unit(&init3_config, &mut xm_adc_handle);
+            adc_oneshot_config_channel(xp_adc_handle, xp_adc, &mut config);
+            adc_oneshot_config_channel(xm_adc_handle, xm_adc, &mut config);
+            adc_oneshot_config_channel(yp_adc_handle, yp_adc, &mut config);
             //adc1_config_width(12);
             gpio_reset_pin(xp_pin.pin());
             gpio_reset_pin(yp_pin.pin());
@@ -87,12 +97,14 @@ impl TouchBreakout {
             yp_pin,
             xm_pin,
             ym_pin,
-            x_adc,
-            y_adc,
+            xp_adc,
+            xm_adc,
+            yp_adc,
             x_max,
             y_max,
-            x_adc_handle,
-            y_adc_handle,
+            xp_adc_handle,
+            xm_adc_handle,
+            yp_adc_handle,
         }
     }
 
@@ -131,7 +143,7 @@ impl TouchBreakout {
                 //adc_val += adc1_get_raw(self.y_adc) as u32;
                 let mut out: i32 = 0;
                 unsafe {
-                    adc_oneshot_read(self.x_adc_handle, self.x_adc, std::ptr::from_mut(&mut out));
+                    adc_oneshot_read(self.xp_adc_handle, self.xp_adc, std::ptr::from_mut(&mut out));
                 }
                 adc_val += out;
             }
@@ -190,12 +202,63 @@ impl TouchBreakout {
                 //adc_val += adc1_get_raw(self.x_adc) as u32;
                 let mut out: i32 = 0;
                 unsafe {
-                    adc_oneshot_read(self.y_adc_handle, self.y_adc, std::ptr::from_mut(&mut out));
+                    adc_oneshot_read(self.yp_adc_handle, self.yp_adc, std::ptr::from_mut(&mut out));
                 }
                 adc_val += out;
             }
             gpio_set_level(self.xm_pin.pin(), 1);
             Ok(self.x_max -(adc_val as f32 / 40960. * self.x_max as f32 ) as i32)
+        }
+    }
+
+    pub fn get_z(&mut self) -> Result<i32, EspError> {
+        unsafe {
+            /*
+            gpio_reset_pin(self.ym_pin.pin());
+            gpio_reset_pin(self.yp_pin.pin());
+            */
+            gpio_reset_pin(self.yp_pin.pin());
+            gpio_reset_pin(self.xm_pin.pin());
+
+            gpio_set_direction(self.xp_pin.pin(), gpio_mode_t_GPIO_MODE_OUTPUT);
+            gpio_set_direction(self.ym_pin.pin(), gpio_mode_t_GPIO_MODE_OUTPUT);
+            //gpio_set_direction(self.xp_pin.pin(), gpio_mode_t_GPIO_MODE_INPUT);
+            //gpio_set_direction(self.xm_pin.pin(), gpio_mode_t_GPIO_MODE_INPUT);
+            //
+            //13, 1, 2, 14 
+            //xp, yp, xm, ym
+
+            gpio_set_level(self.xp_pin.pin(), 1);
+            gpio_set_level(self.ym_pin.pin(), 0);
+
+
+            //adc1_config_channel_atten(self.y_adc, adc_atten_t_ADC_ATTEN_DB_11);
+
+
+            let mut z1_adc_val: i32 = 0;
+            for i in 0..10 {
+                //adc_val += adc1_get_raw(self.y_adc) as u32;
+                let mut out: i32 = 0;
+                unsafe {
+                    adc_oneshot_read(self.yp_adc_handle, self.yp_adc, std::ptr::from_mut(&mut out));
+                }
+                z1_adc_val += out;
+            }
+
+            let mut z2_adc_val: i32 = 0;
+            for i in 0..10 {
+                //adc_val += adc1_get_raw(self.y_adc) as u32;
+                let mut out: i32 = 0;
+                unsafe {
+                    adc_oneshot_read(self.xm_adc_handle, self.xm_adc, std::ptr::from_mut(&mut out));
+                }
+                z2_adc_val += out;
+            }
+            //if Z1-Z2 is very high (whole voltage over Z, Pressure resistor) no touch is detected
+            //Z1-Z2
+            //
+            todo!("Pressure detection is yet to develop");
+            //Ok((z_adc_val as f32 / 40960. * self.y_max as f32 ) as i32)
         }
     }
 }
