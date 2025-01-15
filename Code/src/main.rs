@@ -107,6 +107,7 @@ fn main() -> Result<(), EspError> {
 
     let xpa = xp.adc_channel();
     let ypa = yp.adc_channel();
+    let xma = xm.adc_channel();
 
     let mut ts = TouchBreakout::new(
         xp.into(),
@@ -115,6 +116,7 @@ fn main() -> Result<(), EspError> {
         ym.into(),
         xpa,
         ypa,
+        xma,
         320,
         240,
     );
