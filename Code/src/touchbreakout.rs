@@ -355,7 +355,8 @@ impl TouchBreakout {
             res |= adc_continuous_monitor_enable(monitor_handle);
         }
 
-        todo!("Pressure detection is yet to develop");
+        //todo!("Pressure detection is yet to develop");
+        Ok(true)
 
         /*
         let init2_config: adc_oneshot_unit_init_cfg_t = adc_oneshot_unit_init_cfg_t {
@@ -377,7 +378,31 @@ impl TouchBreakout {
         */
     }
 
-    pub fn touch_detection(&mut self) -> Result<bool, EspError> {
+    pub fn touch_detection_bool(&mut self) -> Result<i32, EspError> {
+        unsafe {
+            //gpio_reset_pin(self.ym_pin.pin());
+            //gpio_reset_pin(self.yp_pin.pin());
+            gpio_reset_pin(self.yp_pin.pin());
+            gpio_reset_pin(self.xm_pin.pin());
+
+            gpio_set_direction(self.xp_pin.pin(), gpio_mode_t_GPIO_MODE_OUTPUT);
+            gpio_set_direction(self.ym_pin.pin(), gpio_mode_t_GPIO_MODE_OUTPUT);
+            gpio_set_direction(self.yp_pin.pin(), gpio_mode_t_GPIO_MODE_INPUT);
+            //gpio_set_direction(self.xm_pin.pin(), gpio_mode_t_GPIO_MODE_INPUT);
+            //
+            //13, 1, 2, 14
+            //xp, yp, xm, ym
+
+            gpio_set_level(self.xp_pin.pin(), 1);
+            gpio_set_level(self.ym_pin.pin(), 0);
+        }
+        //adc1_config_channel_atten(self.y_adc, adc_atten_t_ADC_ATTEN_DB_11);
+
+        unsafe {
+            return Ok(gpio_get_level(self.yp_pin.pin()));
+        }
+    }
+    pub fn touch_detection(&mut self) -> Result<i32, EspError> {
         unsafe {
             //gpio_reset_pin(self.ym_pin.pin());
             //gpio_reset_pin(self.yp_pin.pin());
@@ -410,7 +435,7 @@ impl TouchBreakout {
             }
             y_adc_val += out;
         }
-        Ok(true)
+        Ok(y_adc_val/ 10)
     }
 }
 

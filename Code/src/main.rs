@@ -13,7 +13,7 @@ use embedded_graphics::{
     Drawable,
 };
 use esp_idf_hal::{
-    gpio::{ADCPin, Pin, PinDriver},
+    gpio::{ADCPin, Gpio8, Pin, PinDriver},
     peripheral::Peripheral,
     sys::gpio_set_level,
     units::MilliSeconds,
@@ -27,6 +27,7 @@ use esp_idf_svc::{
     systime::EspSystemTime,
     timer,
 };
+
 
 use ass::touchbreakout;
 use ass::{fusb302, touchbreakout::TouchBreakout};
@@ -126,16 +127,16 @@ fn main() -> Result<(), EspError> {
     let mut balls = vec![];
 
     let mut styles = vec![];
-    styles.push(PrimitiveStyle::with_fill(ass::MyColor(0xF8,0)));
-    styles.push(PrimitiveStyle::with_fill(ass::MyColor(0xE0,0)));
-    styles.push(PrimitiveStyle::with_fill(ass::MyColor(0xD0,0)));
-    styles.push(PrimitiveStyle::with_fill(ass::MyColor(0xC0,0)));
-    styles.push(PrimitiveStyle::with_fill(ass::MyColor(0xB0,0)));
-    styles.push(PrimitiveStyle::with_fill(ass::MyColor(0x90,0)));
-    styles.push(PrimitiveStyle::with_fill(ass::MyColor(0x70,0)));
-    styles.push(PrimitiveStyle::with_fill(ass::MyColor(0x50,0)));
-    styles.push(PrimitiveStyle::with_fill(ass::MyColor(0x30,0)));
-    styles.push(PrimitiveStyle::with_fill(ass::MyColor(0x10,0)));
+    styles.push(PrimitiveStyle::with_fill(ass::MyColor(0xF8, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass::MyColor(0xE0, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass::MyColor(0xD0, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass::MyColor(0xC0, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass::MyColor(0xB0, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass::MyColor(0x90, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass::MyColor(0x70, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass::MyColor(0x50, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass::MyColor(0x30, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass::MyColor(0x10, 0)));
 
     loop {
         let time_stamp = SystemTime::now().duration_since(timeno).unwrap();
@@ -143,13 +144,17 @@ fn main() -> Result<(), EspError> {
         Text::new(&str, Point::new(50, 50), style).draw(&mut screen);
         let p1 = ts.get_x()?;
         let p2 = ts.get_y()?;
+        let pressure = ts.touch_detection()?;
+        let bool_pressure = ts.touch_detection_bool()?;
+        let strong = format!("{:5}  {}", pressure, bool_pressure);
+        Text::new(&strong, Point::new(50, 100), style).draw(&mut screen);
         let ball = Circle::new(Point::new(p2 - 5, p1 - 5), 10);
 
         balls.insert(0, ball);
         if balls.len() > 10 {
             balls.pop();
         }
-        let mut i : usize = balls.len()-1;
+        let mut i: usize = balls.len() - 1;
         let mut rev_balls = balls.clone();
         rev_balls.reverse();
         for b in rev_balls {
@@ -168,33 +173,33 @@ struct Ball {
     id: u8,
 }
 
-struct Open;
-struct Closed;
+fn solder_task() {
+    //read adc temperature pin
+    //
+    let adc_heat = unsafe { Gpio8::new().adc_channel() };
+    let mut adc_handle: adc_oneshot_unit_handle_t = std::ptr::null_mut();
+    unsafe {
+        let init_config: adc_oneshot_unit_init_cfg_t = adc_oneshot_unit_init_cfg_t {
+            unit_id: adc_unit_t_ADC_UNIT_2,
+            clk_src: 0,
+            ulp_mode: 0,
+        };
 
-struct Door<State> {
-    s: PhantomData<State>,
-}
-
-impl<T> Door<T> {
-    fn mamamamama(&self) {}
-}
-
-impl Door<Open> {
-    fn close(&self) -> Door<Closed> {
-        Door {
-            s: PhantomData::default(),
-        }
+        let mut config: adc_oneshot_chan_cfg_t = adc_oneshot_chan_cfg_t {
+            atten: adc_atten_t_ADC_ATTEN_DB_11,
+            bitwidth: adc_bitwidth_t_ADC_BITWIDTH_DEFAULT,
+        };
+        adc_oneshot_new_unit(&init_config, &mut adc_handle);
+        adc_oneshot_config_channel(adc_handle, adc_heat, &mut config);
     }
+    let mut out: i32 = 0;
+    adc_oneshot_read(adc_handle, adc_heat, std::ptr::from_mut(&mut out));
+    //read saved temperature calibration values
+    
 
-    fn open(&self) -> () {
-        ()
-    }
-}
+    //convert to right temperature
+    //(PID)
+    //adjust output duty cycle
 
-impl Door<Closed> {
-    fn open(&self) -> Door<Open> {
-        Door {
-            s: PhantomData::default(),
-        }
-    }
+    //todo implement PID
 }
