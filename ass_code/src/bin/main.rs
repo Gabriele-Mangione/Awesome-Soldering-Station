@@ -107,13 +107,18 @@ fn main() -> ! {
         Text::new(&s, Point::new(50, 110 + pdo.id as i32 * 25), style).draw(&mut screen);
     }
 
+    /*
     let mut adc_config1 = AdcConfig::new();
     let mut adc_config2 = AdcConfig::new();
     let xp_adc = adc_config2.enable_pin(peripherals.GPIO13, esp_hal::analog::adc::Attenuation::_11dB);
     let xm_adc = adc_config1.enable_pin(peripherals.GPIO2, esp_hal::analog::adc::Attenuation::_11dB);
     let yp_adc = adc_config1.enable_pin(peripherals.GPIO1, esp_hal::analog::adc::Attenuation::_11dB);
-    let mut adc1 = Adc::new(peripherals.ADC1, adc_config1);
-    let mut adc2 = Adc::new(peripherals.ADC2, adc_config2);
+
+    let mut adc1 = peripherals.ADC1;
+    let mut adc2 = peripherals.ADC2;
+    let mut adc1 = Adc::new(&mut adc1, adc_config1);
+    let mut adc2 = Adc::new(&mut adc2, adc_config2);
+    */
 
 
     //adc1.read_oneshot(&a);
@@ -133,9 +138,6 @@ fn main() -> ! {
         240,
         &mut adc1,
         &mut adc2,
-        xp_adc,
-        yp_adc,
-        xm_adc,
     );
 
 

@@ -4,11 +4,11 @@ use embedded_graphics::prelude::Point;
 
 use esp_hal::{
     analog::adc::{Adc, AdcChannel, AdcConfig, AdcPin, RegisterAccess},
-    gpio::{AnalogPin, AnyPin, Input, Output},
-    peripherals::{ADC1, ADC2},
+    gpio::{AnalogPin, AnyPin, Input, Output, GpioPin},
+    peripherals::{ADC1, ADC2}, peripheral::Peripheral,
 };
 
-use core::{ptr::write_volatile, borrow::BorrowMut};
+use core::{borrow::BorrowMut, ptr::write_volatile, char::from_digit};
 
 //use crate::adc_monitor_link::*;
 
@@ -16,52 +16,35 @@ use core::{ptr::write_volatile, borrow::BorrowMut};
 const OUT_W1TS_ADDR: *mut u32 = 0x60004008 as *mut u32;
 const OUT_W1TC_ADDR: *mut u32 = 0x6000400C as *mut u32;
 
-pub struct TouchBreakout<'a, ADCH1 , ADCH2, ADCH3>
-where
-    ADCH1: AdcChannel + AnalogPin,
-    ADCH2: AdcChannel + AnalogPin,
-    ADCH3: AdcChannel + AnalogPin,
-{
-    xp_pin: AnyPin,
-    yp_pin: AnyPin,
-    xm_pin: AnyPin,
-    ym_pin: AnyPin,
+pub struct TouchBreakout<'a, A>
+where A:Into<AnyPin>+ Peripheral + AnalogPin + AdcChannel +  'a {
+    xp_pin: &'a mut A,
+    yp_pin: &'a mut A,
+    xm_pin: &'a mut A,
+    ym_pin: &'a mut A,
     x_max: i32,
     y_max: i32,
-    adc1: &'a mut Adc<'a, ADC1>,
-    adc2: &'a mut Adc<'a, ADC2>,
-    xp_adc: AdcPin<ADCH1, ADC2>,
-    yp_adc: AdcPin<ADCH2, ADC1>,
-    xm_adc: AdcPin<ADCH3, ADC1>,
+    adc1: &'a mut ADC1,
+    adc2: &'a mut ADC2,
 }
 
-impl<'a, ADCH1, ADCH2, ADCH3> TouchBreakout<'a, ADCH1, ADCH2, ADCH3>
-where
-    ADCH1: AdcChannel + AnalogPin,
-    ADCH2: AdcChannel + AnalogPin,
-    ADCH3: AdcChannel + AnalogPin,
-{
+impl<'a, A> TouchBreakout<'a, A> 
+where A: Into<AnyPin>+ Peripheral + AnalogPin + AdcChannel + 'a {
     pub fn new(
-        xp_pin: AnyPin,
-        yp_pin: AnyPin,
-        xm_pin: AnyPin,
-        ym_pin: AnyPin,
+    xp_pin: &'a mut A,
+    yp_pin: &'a mut A,
+    xm_pin: &'a mut A,
+    ym_pin: &'a mut A,
         x_max: i32,
         y_max: i32,
-        adc1: &'a mut Adc<'a, ADC1>,
-        adc2: &'a mut Adc<'a, ADC2>,
-        xp_adc: AdcPin<ADCH1, ADC2>,
-        yp_adc: AdcPin<ADCH2, ADC1>,
-        xm_adc: AdcPin<ADCH3, ADC1>,
-    ) -> TouchBreakout<'a, ADCH1, ADCH2, ADCH3> {
+        adc1: &'a mut ADC1,
+        adc2: &'a mut ADC2,
+    ) -> TouchBreakout<'a, A> {
         TouchBreakout {
             xp_pin,
             yp_pin,
             xm_pin,
             ym_pin,
-            xp_adc,
-            xm_adc,
-            yp_adc,
             x_max,
             y_max,
             adc1,
@@ -83,13 +66,18 @@ where
     }
 
     pub fn get_x(&mut self) -> i32 {
-        Input::new(self.xp_pin.borrow_mut(), esp_hal::gpio::Pull::None);
-        Output::new(self.yp_pin.borrow_mut(), esp_hal::gpio::Level::High);
-        Output::new(self.ym_pin.borrow_mut(), esp_hal::gpio::Level::Low);
+        Input::new(self.xp_pin, esp_hal::gpio::Pull::None);
+        Output::new(self.yp_pin.into(), esp_hal::gpio::Level::High);
+        Output::new(self.ym_pin.into(), esp_hal::gpio::Level::Low);
+
+
+    let mut adc_config = AdcConfig::new();
+    let mut xp_adc = adc_config.enable_pin(self.xp_pin.into(), esp_hal::analog::adc::Attenuation::_11dB);
+    let mut adc = Adc::new(&mut self.adc2, adc_config);
 
         let mut adc_val: i32 = 0;
         for i in 0..10 {
-            let out = self.adc2.read_oneshot(&mut self.xp_adc).unwrap();
+            let out = adc.read_oneshot(&mut xp_adc).unwrap();
             adc_val += out as i32;
         }
         adc_val * self.y_max / 40960
@@ -123,9 +111,13 @@ where
         Output::new(self.xp_pin.borrow_mut(), esp_hal::gpio::Level::High);
         Output::new(self.xm_pin.borrow_mut(), esp_hal::gpio::Level::Low);
 
+    let mut adc_config = AdcConfig::new();
+    let mut yp_adc = adc_config.enable_pin(self.yp_pin.into(), esp_hal::analog::adc::Attenuation::_11dB);
+    let mut adc = Adc::new(&mut self.adc1, adc_config);
+
         let mut adc_val: i32 = 0;
         for i in 0..10 {
-            let out = self.adc1.read_oneshot(&mut self.yp_adc).unwrap();
+            let out = adc.read_oneshot(&mut yp_adc).unwrap();
             adc_val += out as i32;
         }
         self.x_max - (adc_val * self.x_max / 40960)
@@ -136,9 +128,13 @@ where
         Output::new(self.xp_pin.borrow_mut(), esp_hal::gpio::Level::High);
         Output::new(self.ym_pin.borrow_mut(), esp_hal::gpio::Level::Low);
 
+    let mut adc_config = AdcConfig::new();
+    let mut yp_adc = adc_config.enable_pin(self.yp_pin.into(), esp_hal::analog::adc::Attenuation::_11dB);
+    let mut adc = Adc::new(&mut self.adc1, adc_config);
+
         let mut adc_val: i32 = 0;
         for i in 0..10 {
-            let out = self.adc1.read_oneshot(&mut self.yp_adc).unwrap();
+            let out = adc.read_oneshot(&mut yp_adc).unwrap();
             adc_val += out as i32;
         }
         adc_val / 10
@@ -243,7 +239,11 @@ where
         Output::new(self.xp_pin.borrow_mut(), esp_hal::gpio::Level::High);
         Output::new(self.ym_pin.borrow_mut(), esp_hal::gpio::Level::Low);
 
-        self.adc1.read_oneshot(&mut self.yp_adc).unwrap() as i32
+    let mut adc_config = AdcConfig::new();
+    let mut yp_adc = adc_config.enable_pin(self.yp_pin.into(), esp_hal::analog::adc::Attenuation::_11dB);
+    let mut adc = Adc::new(&mut self.adc1, adc_config);
+
+        adc.read_oneshot(&mut yp_adc).unwrap() as i32
         //return Ok(gpio_get_level(self.yp_pin.pin()));
     }
     pub fn touch_detection(&mut self) -> i32 {
@@ -251,10 +251,15 @@ where
         Output::new(self.xp_pin.borrow_mut(), esp_hal::gpio::Level::High);
         Output::new(self.ym_pin.borrow_mut(), esp_hal::gpio::Level::Low);
 
+    let mut adc_config = AdcConfig::new();
+    let mut yp_adc = adc_config.enable_pin(self.yp_pin, esp_hal::analog::adc::Attenuation::_11dB);
+    let mut adc = Adc::new(&mut self.adc1, adc_config);
+
+
         let mut y_adc_val: i32 = 0;
         for i in 0..10 {
             //adc_val += adc1_get_raw(self.y_adc) as u32;
-            let out = self.adc1.read_oneshot(&mut self.yp_adc).unwrap();
+            let out = adc.read_oneshot(&mut yp_adc).unwrap();
             y_adc_val += out as i32;
         }
         y_adc_val / 10
