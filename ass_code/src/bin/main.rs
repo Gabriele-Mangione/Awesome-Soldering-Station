@@ -1,7 +1,10 @@
 #![no_std]
 #![no_main]
 
+extern crate alloc;
 use alloc::borrow::ToOwned;
+use alloc::vec::Vec;
+use alloc::{format, vec};
 use alloc::string::ToString;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::mono_font::ascii::FONT_10X20;
@@ -11,17 +14,20 @@ use embedded_graphics::primitives::PrimitiveStyle;
 use embedded_graphics::text::Text;
 use embedded_graphics::text::renderer::CharacterStyle;
 use esp_backtrace as _;
+use esp_hal::analog::adc::{Adc, AdcConfig};
 use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
 use esp_hal::gpio::{Output, Io, Level};
 use esp_hal::main;
+use esp_hal::peripheral::Peripheral;
 use esp_hal::timer::timg::TimerGroup;
 use log::info;
 
+use ass_code::fusb302;
 use ass_code::ili9341;
 use embedded_graphics::{self, Drawable};
+use ass_code::touchbreakout::{self, TouchBreakout};
 
-extern crate alloc;
 
 #[main]
 fn main() -> ! {
@@ -70,6 +76,69 @@ fn main() -> ! {
 
     //Rectangle::new(Point::new(0, 0), Size::new(320, 240));
     
+    let mut pdo_vec: Vec<fusb302::PDO> = vec![];
+    let mut style = MonoTextStyle::new(&FONT_10X20, ass_code::MyColor(255, 255));
+    {
+
+        log::info!("init fusb!");
+
+        let mut fusb = fusb302::Fusb::new(peripherals.GPIO5.into(),peripherals.GPIO4.into(), peripherals.I2C0, 0x22);
+        log::info!("scan pds!");
+        pdo_vec = fusb.scan_pds().unwrap();
+        log::info!("request pdo!");
+
+        if pdo_vec.len() > 0 {
+            let found_pdo = pdo_vec.iter().find(|&&x| x.voltage == 9000);
+            if found_pdo.is_some() {
+                fusb.request_pdo(*found_pdo.unwrap(), 3000, 3000).unwrap();
+                Text::new("A PDO has been requested", Point::new(50, 170), style).draw(&mut screen);
+            }
+        }
+        log::info!("done");
+    }
+
+    style.set_background_color(Some(ass_code::MyColor(0, 0)));
+
+    let st = format!("pdo amount: {}", pdo_vec.len());
+    Text::new(&st, Point::new(50, 75), style).draw(&mut screen);
+    for pdo in pdo_vec {
+        log::info!("print pdo");
+        let s = format!("V: {}, I: {}, id: {}", pdo.voltage, pdo.current, pdo.id);
+        Text::new(&s, Point::new(50, 110 + pdo.id as i32 * 25), style).draw(&mut screen);
+    }
+
+    let mut adc_config1 = AdcConfig::new();
+    let mut adc_config2 = AdcConfig::new();
+    let xp_adc = adc_config2.enable_pin(peripherals.GPIO13, esp_hal::analog::adc::Attenuation::_11dB);
+    let xm_adc = adc_config1.enable_pin(peripherals.GPIO2, esp_hal::analog::adc::Attenuation::_11dB);
+    let yp_adc = adc_config1.enable_pin(peripherals.GPIO1, esp_hal::analog::adc::Attenuation::_11dB);
+    let mut adc1 = Adc::new(peripherals.ADC1, adc_config1);
+    let mut adc2 = Adc::new(peripherals.ADC2, adc_config2);
+
+
+    //adc1.read_oneshot(&a);
+    log::info!("init touch!");
+    let yp = peripherals.GPIO1;
+    let xm = peripherals.GPIO2;
+    let ym = peripherals.GPIO14;
+    let xp = peripherals.GPIO13;
+
+
+    let mut ts = TouchBreakout::new(
+        xp.into(),
+        yp.into(),
+        xm.into(),
+        ym.into(),
+        320,
+        240,
+        &mut adc1,
+        &mut adc2,
+        xp_adc,
+        yp_adc,
+        xm_adc,
+    );
+
+
     Text::new("This is a text", Point::new(50, 50), style).draw(&mut screen);
 
     let delay = Delay::new();
