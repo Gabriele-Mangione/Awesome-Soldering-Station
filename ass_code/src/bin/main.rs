@@ -9,7 +9,7 @@ use alloc::string::ToString;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::mono_font::ascii::FONT_10X20;
 use embedded_graphics::prelude::{Size, Point};
-use embedded_graphics::primitives::{Rectangle, Primitive};
+use embedded_graphics::primitives::{Rectangle, Primitive, Circle};
 use embedded_graphics::primitives::PrimitiveStyle;
 use embedded_graphics::text::Text;
 use embedded_graphics::text::renderer::CharacterStyle;
@@ -26,7 +26,7 @@ use log::info;
 use ass_code::fusb302;
 use ass_code::ili9341;
 use embedded_graphics::{self, Drawable};
-use ass_code::touchbreakout::{self, TouchBreakout};
+use ass_code::touchbreakout::{self, TouchBreakout, Pinny};
 
 
 #[main]
@@ -119,6 +119,8 @@ fn main() -> ! {
     let mut adc1 = Adc::new(&mut adc1, adc_config1);
     let mut adc2 = Adc::new(&mut adc2, adc_config2);
     */
+    let mut adc1 = peripherals.ADC1;
+    let mut adc2 = peripherals.ADC2;
 
 
     //adc1.read_oneshot(&a);
@@ -130,15 +132,29 @@ fn main() -> ! {
 
 
     let mut ts = TouchBreakout::new(
-        xp.into(),
-        yp.into(),
-        xm.into(),
-        ym.into(),
+        xp,
+        yp,
+        xm,
+        ym,
         320,
         240,
         &mut adc1,
         &mut adc2,
     );
+
+    let mut balls = vec![];
+
+    let mut styles = vec![];
+    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0xF8, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0xE0, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0xD0, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0xC0, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0xB0, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x90, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x70, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x50, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x30, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x10, 0)));
 
 
     Text::new("This is a text", Point::new(50, 50), style).draw(&mut screen);
@@ -147,6 +163,21 @@ fn main() -> ! {
     let mut time = 0;
     loop {
         time += 1;
+        let p1 = ts.get_x();
+        let p2 = ts.get_y();
+        let ball = Circle::new(Point::new(p2 - 5, p1 - 5), 10);
+
+        balls.insert(0, ball);
+        if balls.len() > 10 {
+            balls.pop();
+        }
+        let mut i: usize = balls.len() - 1;
+        let mut rev_balls = balls.clone();
+        rev_balls.reverse();
+        for b in rev_balls {
+            b.into_styled(styles[i]).draw(&mut screen);
+            i -= 1;
+        }
         
         let mut str = "This is a text ".to_owned() + &time.to_string();
         Text::new(&str, Point::new(50, 50), style).draw(&mut screen);
