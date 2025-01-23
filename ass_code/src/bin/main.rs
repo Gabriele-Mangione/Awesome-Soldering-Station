@@ -2,6 +2,8 @@
 #![no_main]
 
 extern crate alloc;
+use core::ptr::addr_of_mut;
+
 use alloc::borrow::ToOwned;
 use alloc::string::ToString;
 use alloc::vec::Vec;
@@ -14,24 +16,34 @@ use embedded_graphics::primitives::{Circle, Primitive, Rectangle};
 use embedded_graphics::text::renderer::CharacterStyle;
 use embedded_graphics::text::Text;
 use esp_backtrace as _;
-use esp_hal::analog::adc::{Adc, AdcChannel, AdcConfig};
+use esp_hal::analog::adc::{self, Adc, AdcChannel, AdcConfig, AdcPin};
 use esp_hal::clock::CpuClock;
+use esp_hal::cpu_control::{CpuControl, Stack};
 use esp_hal::delay::Delay;
-use esp_hal::gpio::{AnalogPin, Io, Level, Output};
-use esp_hal::main;
+use esp_hal::gpio::interconnect::PeripheralOutput;
+use esp_hal::gpio::{AnalogPin, AnyPin, GpioPin, Io, Level, Output};
+use esp_hal::ledc::channel::{Channel, ChannelIFace};
+use esp_hal::ledc::LowSpeed;
+use esp_hal::ledc::{channel::Number, Ledc};
 use esp_hal::peripheral::Peripheral;
-use esp_hal::peripherals::ADC1;
+use esp_hal::peripherals::{ADC1, LEDC};
 use esp_hal::timer::timg::TimerGroup;
+use esp_hal::{main, peripherals};
+use esp_storage::FlashStorage;
 use log::info;
 
-
 use embedded_storage::{ReadStorage, Storage};
-use esp_storage::FlashStorage;
+//use esp_storage::FlashStorage;
+use embassy_executor::Spawner;
+use esp_hal_embassy::Executor;
+use static_cell::StaticCell;
 
 use ass_code::fusb302;
 use ass_code::ili9341;
 use ass_code::touchbreakout::{self, Pinny, TouchBreakout};
 use embedded_graphics::{self, Drawable};
+
+static mut APP_CORE_STACK: Stack<8192> = Stack::new();
 
 #[main]
 fn main() -> ! {
@@ -54,7 +66,6 @@ fn main() -> ! {
     .unwrap();
     */
 
-    let io = Io::new(peripherals.IO_MUX);
     Output::new(peripherals.GPIO35, Level::Low);
     Output::new(peripherals.GPIO36, Level::Low);
     Output::new(peripherals.GPIO37, Level::Low);
@@ -79,7 +90,7 @@ fn main() -> ! {
 
     //Rectangle::new(Point::new(0, 0), Size::new(320, 240));
 
-    let mut pdo_vec: Vec<fusb302::PDO> = vec![];
+    let pdo_vec: Vec<fusb302::PDO>;
     let mut style = MonoTextStyle::new(&FONT_10X20, ass_code::MyColor(255, 255));
     {
         log::info!("init fusb!");
@@ -157,6 +168,28 @@ fn main() -> ! {
     let delay = Delay::new();
     let mut time = 0;
 
+    let mut adc_config = AdcConfig::new();
+    let mut temp_pin =
+        adc_config.enable_pin(peripherals.GPIO8, esp_hal::analog::adc::Attenuation::_11dB);
+    let mut adc = Adc::new(&mut peripherals.ADC1, adc_config);
+
+    let ledc = Ledc::new(peripherals.LEDC);
+    let solder_pin = ledc.channel(Number::Channel0, peripherals.GPIO9);
+
+    let mut cpu_control = CpuControl::new(peripherals.CPU_CTRL);
+    let _guard = cpu_control
+        .start_app_core(unsafe { &mut *addr_of_mut!(APP_CORE_STACK) }, move || {
+            static EXECUTOR: StaticCell<Executor> = StaticCell::new();
+            let executor = EXECUTOR.init(Executor::new());
+            executor.run(|spawner| {
+                spawner
+                    .spawn(solder_task::<ADC1, GpioPin<8>>(
+                            temp_pin, adc, solder_pin))
+                    .ok();
+            });
+        })
+        .unwrap();
+
     loop {
         time += 1;
         let p1 = 0; //ts.get_x(); //crash
@@ -177,7 +210,7 @@ fn main() -> ! {
             }
         }
 
-        let mut str = "This is a text ".to_owned() + &time.to_string();
+        let str = "This is a text ".to_owned() + &time.to_string();
         Text::new(&str, Point::new(50, 50), style).draw(&mut screen);
         info!("Hello world!");
         delay.delay_millis(500);
@@ -185,17 +218,23 @@ fn main() -> ! {
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/v0.23.1/examples/src/bin
 }
 
-fn solder_task(temp_pin: impl AdcChannel + AnalogPin, adc: ADC1) {
-    //read adc temperature pin
-    let mut adc_config = AdcConfig::new();
-    let mut adc_pin = adc_config.enable_pin(temp_pin, esp_hal::analog::adc::Attenuation::_11dB);
-    let mut adc = Adc::new(adc, adc_config);
-
-    let out = adc.read_oneshot(&mut adc_pin).unwrap();
+#[embassy_executor::task]
+fn solder_task<ADCI, Pinno>(
+    mut temp_pin: AdcPin<Pinno, ADCI>,
+    mut adc: Adc<ADCI>,
+    solder_pin: Channel<LowSpeed>,
+) where ADCI: adc::RegisterAccess,
+Pinno: AnalogPin + AdcChannel{
+    let set_temp: u16 = 380;
+    let kp: f32 = 1.;
+    let ki: f32 = 0.05;
+    let kd: f32 = 0.;
+    let mut old_diff: i32 = 0;
+    let mut int_diff: i32 = 0;
 
     //read saved temperature calibration values
     //
-    let mut bytes = [0u8;4];
+    let mut bytes = [0u8; 4];
     let mut flash = FlashStorage::new();
 
     flash.capacity();
@@ -203,13 +242,37 @@ fn solder_task(temp_pin: impl AdcChannel + AnalogPin, adc: ADC1) {
     flash.read(0x9000, &mut bytes).unwrap();
 
     //todo convert 2bytes to u16...
-    let p_at_100c = bytes[
-    let p_at_400c = bytes[
- 
+    let p_at_100c: u16 = ((bytes[0] as u16) << 8) | bytes[1] as u16;
+    let p_at_400c: u16 = ((bytes[2] as u16) << 8) | bytes[3] as u16;
 
-    //convert to right temperature
-    //(PID)
-    //adjust output duty cycle
+    loop {
+        //read adc temperature pin
+        let mut out: u32 = 0;
+        for _ in 0..10 {
+            out += adc.read_oneshot(&mut temp_pin).unwrap() as u32;
+        }
+        out /= 10;
 
-    //todo implement PID
+        //convert to right temperature
+        let act_temp: u16 =
+            (p_at_100c as u32 * 300 * (out - 1) / (p_at_400c as u32 - 1) + 100) as u16;
+
+        //(PID)
+
+        //proportional
+        let diff: i32 = set_temp as i32 - act_temp as i32;
+        //integral
+        int_diff += diff as i32;
+        //derivative
+        let der_diff = diff - old_diff;
+        old_diff = diff;
+
+        //adjust output duty cycle
+        let duty_cycle: u8 =
+            ((kp * diff as f32 + ki * int_diff as f32 + kd * der_diff as f32) as u8).clamp(0, 100);
+
+        solder_pin.set_duty(duty_cycle).unwrap();
+
+        info!("{}", duty_cycle);
+    }
 }
