@@ -171,24 +171,12 @@ fn main() -> ! {
     let mut adc_config = AdcConfig::new();
     let mut temp_pin =
         adc_config.enable_pin(peripherals.GPIO8, esp_hal::analog::adc::Attenuation::_11dB);
-    let mut adc = Adc::new(&mut peripherals.ADC1, adc_config);
+
+    let mut adc = Adc::new(&mut adc1, adc_config);
 
     let ledc = Ledc::new(peripherals.LEDC);
     let solder_pin = ledc.channel(Number::Channel0, peripherals.GPIO9);
-
-    let mut cpu_control = CpuControl::new(peripherals.CPU_CTRL);
-    let _guard = cpu_control
-        .start_app_core(unsafe { &mut *addr_of_mut!(APP_CORE_STACK) }, move || {
-            static EXECUTOR: StaticCell<Executor> = StaticCell::new();
-            let executor = EXECUTOR.init(Executor::new());
-            executor.run(|spawner| {
-                spawner
-                    .spawn(solder_task::<ADC1, GpioPin<8>>(
-                            temp_pin, adc, solder_pin))
-                    .ok();
-            });
-        })
-        .unwrap();
+    solder_task::<ADC1, GpioPin<8>>(temp_pin, adc, solder_pin);
 
     loop {
         time += 1;
@@ -218,13 +206,15 @@ fn main() -> ! {
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/v0.23.1/examples/src/bin
 }
 
-#[embassy_executor::task]
+//#[embassy_executor::task]
 fn solder_task<ADCI, Pinno>(
     mut temp_pin: AdcPin<Pinno, ADCI>,
     mut adc: Adc<ADCI>,
     solder_pin: Channel<LowSpeed>,
-) where ADCI: adc::RegisterAccess,
-Pinno: AnalogPin + AdcChannel{
+) where
+    ADCI: adc::RegisterAccess,
+    Pinno: AnalogPin + AdcChannel,
+{
     let set_temp: u16 = 380;
     let kp: f32 = 1.;
     let ki: f32 = 0.05;
@@ -237,19 +227,20 @@ Pinno: AnalogPin + AdcChannel{
     let mut bytes = [0u8; 4];
     let mut flash = FlashStorage::new();
 
-    flash.capacity();
+    flash.write(0x9000, &[0x1, 0x2, 0x3, 0x4]);
 
     flash.read(0x9000, &mut bytes).unwrap();
 
     //todo convert 2bytes to u16...
     let p_at_100c: u16 = ((bytes[0] as u16) << 8) | bytes[1] as u16;
     let p_at_400c: u16 = ((bytes[2] as u16) << 8) | bytes[3] as u16;
+    info!("{} {}", p_at_100c, p_at_400c);
 
     loop {
         //read adc temperature pin
         let mut out: u32 = 0;
         for _ in 0..10 {
-            out += adc.read_oneshot(&mut temp_pin).unwrap() as u32;
+            //out += adc.read_oneshot(&mut temp_pin).unwrap() as u32;
         }
         out /= 10;
 
@@ -271,8 +262,12 @@ Pinno: AnalogPin + AdcChannel{
         let duty_cycle: u8 =
             ((kp * diff as f32 + ki * int_diff as f32 + kd * der_diff as f32) as u8).clamp(0, 100);
 
-        solder_pin.set_duty(duty_cycle).unwrap();
+        //solder_pin.set_duty(duty_cycle).unwrap();
 
         info!("{}", duty_cycle);
+        let delay = Delay::new();
+        delay.delay_millis(500);
+
+        //would be really cool to have a visualisation of the PID stuff on the screen.
     }
 }
