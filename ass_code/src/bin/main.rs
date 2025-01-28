@@ -2,32 +2,48 @@
 #![no_main]
 
 extern crate alloc;
+use core::ptr::addr_of_mut;
+
 use alloc::borrow::ToOwned;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use alloc::{format, vec};
-use alloc::string::ToString;
-use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::mono_font::ascii::FONT_10X20;
-use embedded_graphics::prelude::{Size, Point};
-use embedded_graphics::primitives::{Rectangle, Primitive, Circle};
+use embedded_graphics::mono_font::MonoTextStyle;
+use embedded_graphics::prelude::{Point, Size};
 use embedded_graphics::primitives::PrimitiveStyle;
-use embedded_graphics::text::Text;
+use embedded_graphics::primitives::{Circle, Primitive, Rectangle};
 use embedded_graphics::text::renderer::CharacterStyle;
+use embedded_graphics::text::Text;
 use esp_backtrace as _;
-use esp_hal::analog::adc::{Adc, AdcConfig};
+use esp_hal::analog::adc::{self, Adc, AdcChannel, AdcConfig, AdcPin};
 use esp_hal::clock::CpuClock;
+use esp_hal::cpu_control::{CpuControl, Stack};
 use esp_hal::delay::Delay;
-use esp_hal::gpio::{Output, Io, Level};
-use esp_hal::main;
+use esp_hal::gpio::interconnect::PeripheralOutput;
+use esp_hal::gpio::{AnalogPin, AnyPin, GpioPin, Io, Level, Output};
+use esp_hal::ledc::channel::{Channel, ChannelIFace};
+use esp_hal::ledc::LowSpeed;
+use esp_hal::ledc::{channel::Number, Ledc};
 use esp_hal::peripheral::Peripheral;
+use esp_hal::peripherals::{ADC1, LEDC};
 use esp_hal::timer::timg::TimerGroup;
+use esp_hal::{main, peripherals};
+use esp_storage::FlashStorage;
 use log::info;
+
+use embedded_storage::{ReadStorage, Storage};
+//use esp_storage::FlashStorage;
+use embassy_executor::Spawner;
+use esp_hal_embassy::Executor;
+use static_cell::StaticCell;
 
 use ass_code::fusb302;
 use ass_code::ili9341;
+use ass_code::touchbreakout::{self, Pinny, TouchBreakout};
 use embedded_graphics::{self, Drawable};
-use ass_code::touchbreakout::{self, TouchBreakout, Pinny};
 
+static mut APP_CORE_STACK: Stack<8192> = Stack::new();
 
 #[main]
 fn main() -> ! {
@@ -50,7 +66,6 @@ fn main() -> ! {
     .unwrap();
     */
 
-    let io = Io::new(peripherals.IO_MUX);
     Output::new(peripherals.GPIO35, Level::Low);
     Output::new(peripherals.GPIO36, Level::Low);
     Output::new(peripherals.GPIO37, Level::Low);
@@ -64,7 +79,6 @@ fn main() -> ! {
     Output::new(peripherals.GPIO47, Level::Low);
     Output::new(peripherals.GPIO48, Level::Low);
 
-
     let mut screen = ass_code::ili9341::ILI9341::new();
     let mut style = MonoTextStyle::new(&FONT_10X20, ass_code::MyColor(255, 255));
     style.set_background_color(Some(ass_code::MyColor(0, 0)));
@@ -75,14 +89,18 @@ fn main() -> ! {
         .draw(&mut screen);
 
     //Rectangle::new(Point::new(0, 0), Size::new(320, 240));
-    
-    let mut pdo_vec: Vec<fusb302::PDO> = vec![];
+
+    let pdo_vec: Vec<fusb302::PDO>;
     let mut style = MonoTextStyle::new(&FONT_10X20, ass_code::MyColor(255, 255));
     {
-
         log::info!("init fusb!");
 
-        let mut fusb = fusb302::Fusb::new(peripherals.GPIO5.into(),peripherals.GPIO4.into(), peripherals.I2C0, 0x22);
+        let mut fusb = fusb302::Fusb::new(
+            peripherals.GPIO5.into(),
+            peripherals.GPIO4.into(),
+            peripherals.I2C0,
+            0x22,
+        );
         log::info!("scan pds!");
         pdo_vec = fusb.scan_pds().unwrap();
         log::info!("request pdo!");
@@ -122,7 +140,6 @@ fn main() -> ! {
     let mut adc1 = peripherals.ADC1;
     let mut adc2 = peripherals.ADC2;
 
-
     //adc1.read_oneshot(&a);
     log::info!("init touch!");
     let yp = peripherals.GPIO1;
@@ -130,17 +147,7 @@ fn main() -> ! {
     let ym = peripherals.GPIO14;
     let xp = peripherals.GPIO13;
 
-
-    let mut ts = TouchBreakout::new(
-        xp,
-        yp,
-        xm,
-        ym,
-        320,
-        240,
-        &mut adc1,
-        &mut adc2,
-    );
+    let mut ts = TouchBreakout::new(xp, yp, xm, ym, 320, 240, &mut adc1, &mut adc2);
 
     let mut balls = vec![];
 
@@ -156,34 +163,111 @@ fn main() -> ! {
     styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x30, 0)));
     styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x10, 0)));
 
-
     Text::new("This is a text", Point::new(50, 50), style).draw(&mut screen);
 
     let delay = Delay::new();
     let mut time = 0;
+
+    let mut adc_config = AdcConfig::new();
+    let mut temp_pin =
+        adc_config.enable_pin(peripherals.GPIO8, esp_hal::analog::adc::Attenuation::_11dB);
+
+    let mut adc = Adc::new(&mut adc1, adc_config);
+
+    let ledc = Ledc::new(peripherals.LEDC);
+    let solder_pin = ledc.channel(Number::Channel0, peripherals.GPIO9);
+    solder_task::<ADC1, GpioPin<8>>(temp_pin, adc, solder_pin);
+
     loop {
         time += 1;
-        let p1 = ts.get_x();
-        let p2 = ts.get_y();
-        let ball = Circle::new(Point::new(p2 - 5, p1 - 5), 10);
+        let p1 = 0; //ts.get_x(); //crash
+        let p2 = 0; //ts.get_y();
+        if p1 != 0 {
+            let ball = Circle::new(Point::new(p2 - 5, p1 - 5), 10);
 
-        balls.insert(0, ball);
-        if balls.len() > 10 {
-            balls.pop();
+            balls.insert(0, ball);
+            if balls.len() > 10 {
+                balls.pop();
+            }
+            let mut i: usize = balls.len() - 1;
+            let mut rev_balls = balls.clone();
+            rev_balls.reverse();
+            for b in rev_balls {
+                b.into_styled(styles[i]).draw(&mut screen);
+                i -= 1;
+            }
         }
-        let mut i: usize = balls.len() - 1;
-        let mut rev_balls = balls.clone();
-        rev_balls.reverse();
-        for b in rev_balls {
-            b.into_styled(styles[i]).draw(&mut screen);
-            i -= 1;
-        }
-        
-        let mut str = "This is a text ".to_owned() + &time.to_string();
+
+        let str = "This is a text ".to_owned() + &time.to_string();
         Text::new(&str, Point::new(50, 50), style).draw(&mut screen);
         info!("Hello world!");
         delay.delay_millis(500);
     }
-
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/v0.23.1/examples/src/bin
+}
+
+//#[embassy_executor::task]
+fn solder_task<ADCI, Pinno>(
+    mut temp_pin: AdcPin<Pinno, ADCI>,
+    mut adc: Adc<ADCI>,
+    solder_pin: Channel<LowSpeed>,
+) where
+    ADCI: adc::RegisterAccess,
+    Pinno: AnalogPin + AdcChannel,
+{
+    let set_temp: u16 = 380;
+    let kp: f32 = 1.;
+    let ki: f32 = 0.05;
+    let kd: f32 = 0.;
+    let mut old_diff: i32 = 0;
+    let mut int_diff: i32 = 0;
+
+    //read saved temperature calibration values
+    //
+    let mut bytes = [0u8; 4];
+    let mut flash = FlashStorage::new();
+
+    flash.write(0x9000, &[0x1, 0x2, 0x3, 0x4]);
+
+    flash.read(0x9000, &mut bytes).unwrap();
+
+    //todo convert 2bytes to u16...
+    let p_at_100c: u16 = ((bytes[0] as u16) << 8) | bytes[1] as u16;
+    let p_at_400c: u16 = ((bytes[2] as u16) << 8) | bytes[3] as u16;
+    info!("{} {}", p_at_100c, p_at_400c);
+
+    loop {
+        //read adc temperature pin
+        let mut out: u32 = 0;
+        for _ in 0..10 {
+            //out += adc.read_oneshot(&mut temp_pin).unwrap() as u32;
+        }
+        out /= 10;
+
+        //convert to right temperature
+        let act_temp: u16 =
+            (p_at_100c as u32 * 300 * (out - 1) / (p_at_400c as u32 - 1) + 100) as u16;
+
+        //(PID)
+
+        //proportional
+        let diff: i32 = set_temp as i32 - act_temp as i32;
+        //integral
+        int_diff += diff as i32;
+        //derivative
+        let der_diff = diff - old_diff;
+        old_diff = diff;
+
+        //adjust output duty cycle
+        let duty_cycle: u8 =
+            ((kp * diff as f32 + ki * int_diff as f32 + kd * der_diff as f32) as u8).clamp(0, 100);
+
+        //solder_pin.set_duty(duty_cycle).unwrap();
+
+        info!("{}", duty_cycle);
+        let delay = Delay::new();
+        delay.delay_millis(500);
+
+        //would be really cool to have a visualisation of the PID stuff on the screen.
+    }
 }

@@ -17,26 +17,6 @@ use core::{borrow::BorrowMut, char::from_digit, ptr::write_volatile};
 const OUT_W1TS_ADDR: *mut u32 = 0x60004008 as *mut u32;
 const OUT_W1TC_ADDR: *mut u32 = 0x6000400C as *mut u32;
 
-pub struct abaabab<B>
-where
-    B: Peripheral<P: InputPin>,
-{
-    p: B,
-}
-
-impl<B> abaabab<B>
-where
-    B: Peripheral<P: InputPin>,
-{
-    pub fn new(pin: B) -> abaabab<B> {
-        Self { p: pin }
-    }
-
-    pub fn foo(&mut self) {
-        Input::new(self.p.borrow_mut(), esp_hal::gpio::Pull::None);
-    }
-}
-
 pub trait Pinny: AnalogPin
         + Peripheral<P: InputPin>
         + Peripheral<P: OutputPin>
