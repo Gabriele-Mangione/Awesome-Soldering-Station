@@ -133,9 +133,6 @@ fn main() -> ! {
             .unwrap();
     }
 
-    let mut adc1 = peripherals.ADC1;
-    let mut adc2 = peripherals.ADC2;
-
     /*
     let mut adc_config1 = AdcConfig::new();
     let mut enable_pin = adc_config1.enable_pin(peripherals.GPIO15, esp_hal::analog::adc::Attenuation::_11dB);
@@ -151,7 +148,10 @@ fn main() -> ! {
     let ym = peripherals.GPIO14;
     let xp = peripherals.GPIO13;
 
-    //let mut ts = TouchBreakout::new(xp, yp, xm, ym, 320, 240, &mut adc1, &mut adc2);
+    let mut adc1_clone = unsafe { peripherals.ADC1.clone_unchecked() };
+    let mut adc2 = peripherals.ADC2;
+
+    let mut ts = TouchBreakout::new(xp, yp, xm, ym, 320, 240, &mut adc1_clone, &mut adc2);
 
     let mut balls: Vec<Circle> = vec![];
 
@@ -175,17 +175,17 @@ fn main() -> ! {
     let mut time = 0;
 
     let mut adc_config = AdcConfig::new();
-    let mut temp_pin =
+    let temp_pin =
         adc_config.enable_pin(peripherals.GPIO8, esp_hal::analog::adc::Attenuation::_11dB);
 
-    let mut adc = Adc::new(&mut adc1, adc_config);
+    let adc1 = Adc::new(peripherals.ADC1, adc_config);
 
     let mut ledc = Ledc::new(peripherals.LEDC);
     ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
     let mut ledc_timer = ledc.timer::<LowSpeed>(timer::Number::Timer0);
     ledc_timer
         .configure(timer::config::Config {
-            duty: timer::config::Duty::Duty5Bit,
+            duty: timer::config::Duty::Duty14Bit, //0- 16384
             clock_source: timer::LSClockSource::APBClk,
             frequency: 24_u32.kHz(),
         })
@@ -200,9 +200,8 @@ fn main() -> ! {
         })
         .unwrap();
 
-    solder_task::<ADC1, GpioPin<8>>(temp_pin, adc, solder_pin);
+    solder_task::<ADC1, GpioPin<8>>(temp_pin, adc1, solder_pin);
 
-    /*
     loop {
         time += 1;
         let p1 = ts.get_x(); //crash
@@ -224,20 +223,62 @@ fn main() -> ! {
         }
 
         let str = "This is a text ".to_owned() + &time.to_string();
-        Text::new(&str, Point::new(50, 50), style).draw(&mut screen).unwrap();
+        Text::new(&str, Point::new(50, 50), style)
+            .draw(&mut screen)
+            .unwrap();
         info!("P1: {:4}, P2: {:4}", p1, p2);
         delay.delay_millis(500);
     }
-    */
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/v0.23.1/examples/src/bin
-    loop {}
+}
+
+fn calib_temp_points<ADCI, Pinno>(
+    mut temp_pin: AdcPin<Pinno, ADCI>,
+    mut adc: Adc<ADCI>,
+    solder_pin: Channel<LowSpeed>,
+) where
+    ADCI: adc::RegisterAccess,
+    Pinno: AnalogPin + AdcChannel,
+{
+    //activate output and show buttons
+
+    //user must augment output until the externally measured temperature reaches STABLE 100°C
+
+    //the measured value shall be saved
+    solder_pin.set_duty_hw(0);
+    let mut out: u32 = 0;
+    for _ in 0..10 {
+        out += adc.read_blocking(&mut temp_pin) as u32;
+    }
+    out /= 10;
+    let p_at_100c: u16 = out as u16;
+
+    //repeat for 400°C
+
+    //save button
+    solder_pin.set_duty_hw(0);
+    out = 0;
+    for _ in 0..10 {
+        out += adc.read_blocking(&mut temp_pin) as u32;
+    }
+    out /= 10;
+    let p_at_400c: u16 = out as u16;
+
+    let mut bytes = [0u8; 4];
+    bytes[0] = (p_at_100c >> 8) as u8;
+    bytes[1] = (p_at_100c) as u8;
+    bytes[2] = (p_at_400c >> 8) as u8;
+    bytes[3] = (p_at_400c) as u8;
+    //write new calibration values to flash
+    let mut flash = FlashStorage::new();
+    flash.write(0x9000, &[0x1, 0x2, 0x3, 0x4]).unwrap();
 }
 
 //#[embassy_executor::task]
 fn solder_task<ADCI, Pinno>(
     mut temp_pin: AdcPin<Pinno, ADCI>,
     mut adc: Adc<ADCI>,
-    mut solder_pin: Channel<LowSpeed>,
+    solder_pin: Channel<LowSpeed>,
 ) where
     ADCI: adc::RegisterAccess,
     Pinno: AnalogPin + AdcChannel,
@@ -269,7 +310,7 @@ fn solder_task<ADCI, Pinno>(
     info!("p @ 100°C: {:5}, p @ 400°C: {:5}", p_at_100c, p_at_400c);
 
     let mut act_temp: f32 = 0.;
-    let mut old_duty: u8 = 0;
+    let mut old_duty: u16 = 0;
     loop {
         //turn off voltage for measurement
         solder_pin.set_duty_hw(0);
@@ -301,7 +342,7 @@ fn solder_task<ADCI, Pinno>(
             old_diff = diff;
 
             //adjust output duty cycle
-            let duty_cycle: u8 = ((pro_diff + int_diff + der_diff) as u8).clamp(0, 100);
+            let duty_cycle: u16 = ((pro_diff + int_diff + der_diff) as u16).clamp(0, 16384);
 
             solder_pin.set_duty_hw(duty_cycle as u32);
 
@@ -320,6 +361,5 @@ fn solder_task<ADCI, Pinno>(
 
         let delay = Delay::new();
         delay.delay_millis(50);
-
     }
 }

@@ -151,7 +151,7 @@ where
         let mut adc = Adc::new(&mut self.adc2, adc_config);
 
         let mut adc_val: i32 = 0;
-        for i in 0..10 {
+        for _ in 0..10 {
             let out = adc.read_blocking(&mut xp_adc);
             adc_val += out as i32;
         }
@@ -196,7 +196,7 @@ where
     let mut adc = Adc::new(&mut self.adc1, adc_config);
 
         let mut adc_val: i32 = 0;
-        for i in 0..10 {
+        for _ in 0..10 {
             let out = adc.read_blocking(&mut yp_adc);
             adc_val += out as i32;
         }
