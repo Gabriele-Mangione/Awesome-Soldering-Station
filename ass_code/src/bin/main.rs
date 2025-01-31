@@ -22,11 +22,12 @@ use esp_hal::cpu_control::{CpuControl, Stack};
 use esp_hal::delay::Delay;
 use esp_hal::gpio::interconnect::PeripheralOutput;
 use esp_hal::gpio::{AnalogPin, AnyPin, GpioPin, Io, Level, Output};
-use esp_hal::ledc::channel::{Channel, ChannelIFace};
-use esp_hal::ledc::LowSpeed;
-use esp_hal::ledc::{channel::Number, Ledc};
+use esp_hal::ledc::channel::{self, Channel, ChannelHW, ChannelIFace};
+use esp_hal::ledc::timer::{self, TimerIFace};
+use esp_hal::ledc::{self, LSGlobalClkSource, Ledc, LowSpeed};
 use esp_hal::peripheral::Peripheral;
 use esp_hal::peripherals::{ADC1, LEDC};
+use esp_hal::time::RateExtU32;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::{main, peripherals};
 use esp_storage::FlashStorage;
@@ -86,7 +87,8 @@ fn main() -> ! {
     //draw black screen
     Rectangle::new(Point::new(0, 0), Size::new(320, 240))
         .into_styled(PrimitiveStyle::with_fill(ass_code::MyColor(0, 0)))
-        .draw(&mut screen).unwrap();
+        .draw(&mut screen)
+        .unwrap();
 
     //Rectangle::new(Point::new(0, 0), Size::new(320, 240));
 
@@ -109,7 +111,9 @@ fn main() -> ! {
             let found_pdo = pdo_vec.iter().find(|&&x| x.voltage == 9000);
             if found_pdo.is_some() {
                 fusb.request_pdo(*found_pdo.unwrap(), 3000, 3000).unwrap();
-                Text::new("A PDO has been requested", Point::new(50, 170), style).draw(&mut screen).unwrap();
+                Text::new("A PDO has been requested", Point::new(50, 170), style)
+                    .draw(&mut screen)
+                    .unwrap();
             }
         }
         log::info!("done");
@@ -118,11 +122,15 @@ fn main() -> ! {
     style.set_background_color(Some(ass_code::MyColor(0, 0)));
 
     let st = format!("pdo amount: {}", pdo_vec.len());
-    Text::new(&st, Point::new(50, 75), style).draw(&mut screen).unwrap();
+    Text::new(&st, Point::new(50, 75), style)
+        .draw(&mut screen)
+        .unwrap();
     for pdo in pdo_vec {
         log::info!("print pdo");
         let s = format!("V: {}, I: {}, id: {}", pdo.voltage, pdo.current, pdo.id);
-        Text::new(&s, Point::new(50, 110 + pdo.id as i32 * 25), style).draw(&mut screen).unwrap();
+        Text::new(&s, Point::new(50, 110 + pdo.id as i32 * 25), style)
+            .draw(&mut screen)
+            .unwrap();
     }
 
     let mut adc1 = peripherals.ADC1;
@@ -143,9 +151,9 @@ fn main() -> ! {
     let ym = peripherals.GPIO14;
     let xp = peripherals.GPIO13;
 
-    let mut ts = TouchBreakout::new(xp, yp, xm, ym, 320, 240, &mut adc1, &mut adc2);
+    //let mut ts = TouchBreakout::new(xp, yp, xm, ym, 320, 240, &mut adc1, &mut adc2);
 
-    let mut balls = vec![];
+    let mut balls: Vec<Circle> = vec![];
 
     let mut styles = vec![];
     styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0xF8, 0)));
@@ -159,24 +167,42 @@ fn main() -> ! {
     styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x30, 0)));
     styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x10, 0)));
 
-    Text::new("This is a text", Point::new(50, 50), style).draw(&mut screen).unwrap();
+    Text::new("This is a text", Point::new(50, 50), style)
+        .draw(&mut screen)
+        .unwrap();
 
     let delay = Delay::new();
     let mut time = 0;
 
-    /*
     let mut adc_config = AdcConfig::new();
     let mut temp_pin =
         adc_config.enable_pin(peripherals.GPIO8, esp_hal::analog::adc::Attenuation::_11dB);
 
     let mut adc = Adc::new(&mut adc1, adc_config);
-    */
 
-    let ledc = Ledc::new(peripherals.LEDC);
-    let solder_pin = ledc.channel::<LowSpeed>(Number::Channel0, peripherals.GPIO9);
+    let mut ledc = Ledc::new(peripherals.LEDC);
+    ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
+    let mut ledc_timer = ledc.timer::<LowSpeed>(timer::Number::Timer0);
+    ledc_timer
+        .configure(timer::config::Config {
+            duty: timer::config::Duty::Duty5Bit,
+            clock_source: timer::LSClockSource::APBClk,
+            frequency: 24_u32.kHz(),
+        })
+        .unwrap();
 
-    //solder_task::<ADC1, GpioPin<8>>(temp_pin, adc, solder_pin);
+    let mut solder_pin = ledc.channel(channel::Number::Channel0, peripherals.GPIO9);
+    solder_pin
+        .configure(channel::config::Config {
+            timer: &ledc_timer,
+            duty_pct: 0,
+            pin_config: channel::config::PinConfig::PushPull,
+        })
+        .unwrap();
 
+    solder_task::<ADC1, GpioPin<8>>(temp_pin, adc, solder_pin);
+
+    /*
     loop {
         time += 1;
         let p1 = ts.get_x(); //crash
@@ -202,24 +228,31 @@ fn main() -> ! {
         info!("P1: {:4}, P2: {:4}", p1, p2);
         delay.delay_millis(500);
     }
+    */
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/v0.23.1/examples/src/bin
+    loop {}
 }
 
 //#[embassy_executor::task]
 fn solder_task<ADCI, Pinno>(
     mut temp_pin: AdcPin<Pinno, ADCI>,
     mut adc: Adc<ADCI>,
-    solder_pin: Channel<LowSpeed>,
+    mut solder_pin: Channel<LowSpeed>,
 ) where
     ADCI: adc::RegisterAccess,
     Pinno: AnalogPin + AdcChannel,
 {
     let set_temp: u16 = 380;
-    let kp: f32 = 1.;
-    let ki: f32 = 0.05;
-    let kd: f32 = 0.;
-    let mut old_diff: i32 = 0;
-    let mut int_diff: i32 = 0;
+    //to calibrate
+    //1. ki = 0, kd = 0, adjust kp so that the first peak is near the set temp
+    //2. drive ki up to the point where the temp is stable at the set temp. (there will be an
+    //   overshoot where the first peak was
+    //3. adjust kd to flatten the overshoot
+    let kp: f32 = 0.8;
+    let ki: f32 = 0.005;
+    let kd: f32 = 0.5;
+    let mut old_diff: f32 = 0.;
+    let mut int_diff: f32 = 0.;
 
     //read saved temperature calibration values
     //
@@ -233,9 +266,13 @@ fn solder_task<ADCI, Pinno>(
     //todo convert 2bytes to u16...
     let p_at_100c: u16 = ((bytes[0] as u16) << 8) | bytes[1] as u16;
     let p_at_400c: u16 = ((bytes[2] as u16) << 8) | bytes[3] as u16;
-    info!("{} {}", p_at_100c, p_at_400c);
+    info!("p @ 100°C: {:5}, p @ 400°C: {:5}", p_at_100c, p_at_400c);
 
+    let mut act_temp: f32 = 0.;
+    let mut old_duty: u8 = 0;
     loop {
+        //turn off voltage for measurement
+        solder_pin.set_duty_hw(0);
         //read adc temperature pin
         let mut out: u32 = 0;
         for _ in 0..10 {
@@ -243,30 +280,46 @@ fn solder_task<ADCI, Pinno>(
         }
         out /= 10;
 
-        //convert to right temperature
-        let act_temp: u16 =
-            (p_at_100c as u32 * 300 * (out - 1) / (p_at_400c as u32 - 1) + 100) as u16;
+        if out > 4000 {
+            //no soldering tip is connected
+            int_diff = 0.;
+            old_diff = 0.;
+        } else {
+            //convert to right temperature
+            //let act_temp: f32 =p_at_100c as f32 * 300. * (out as f32 - 1.) / (p_at_400c as f32 - 1.) + 100.;
 
-        //(PID)
+            //(PID)
 
-        //proportional
-        let diff: i32 = set_temp as i32 - act_temp as i32;
-        //integral
-        int_diff += diff as i32;
-        //derivative
-        let der_diff = diff - old_diff;
-        old_diff = diff;
+            //proportional
+            let diff: f32 = set_temp as f32 - act_temp;
 
-        //adjust output duty cycle
-        let duty_cycle: u8 =
-            ((kp * diff as f32 + ki * int_diff as f32 + kd * der_diff as f32) as u8).clamp(0, 100);
+            let pro_diff = diff * kp;
+            //integral
+            int_diff += diff * ki;
+            //derivative
+            let der_diff = (diff - old_diff) * kd;
+            old_diff = diff;
 
-        //solder_pin.set_duty(duty_cycle).unwrap();
+            //adjust output duty cycle
+            let duty_cycle: u8 = ((pro_diff + int_diff + der_diff) as u8).clamp(0, 100);
 
-        info!("{}", duty_cycle);
+            solder_pin.set_duty_hw(duty_cycle as u32);
+
+            info!(
+                "act_temp: {}, set_temp: {}, duty_cycle: {}",
+                act_temp, set_temp, duty_cycle
+            );
+            info!("pro: {}, int: {}, der: {}", pro_diff, int_diff, der_diff);
+
+            //simulation
+            act_temp += 0.5 * old_duty as f32 - 5.;
+            old_duty = duty_cycle;
+
+            //would be really cool to have a visualisation of the PID stuff on the screen.
+        }
+
         let delay = Delay::new();
-        delay.delay_millis(500);
+        delay.delay_millis(50);
 
-        //would be really cool to have a visualisation of the PID stuff on the screen.
     }
 }
