@@ -86,7 +86,7 @@ fn main() -> ! {
     //draw black screen
     Rectangle::new(Point::new(0, 0), Size::new(320, 240))
         .into_styled(PrimitiveStyle::with_fill(ass_code::MyColor(0, 0)))
-        .draw(&mut screen);
+        .draw(&mut screen).unwrap();
 
     //Rectangle::new(Point::new(0, 0), Size::new(320, 240));
 
@@ -109,7 +109,7 @@ fn main() -> ! {
             let found_pdo = pdo_vec.iter().find(|&&x| x.voltage == 9000);
             if found_pdo.is_some() {
                 fusb.request_pdo(*found_pdo.unwrap(), 3000, 3000).unwrap();
-                Text::new("A PDO has been requested", Point::new(50, 170), style).draw(&mut screen);
+                Text::new("A PDO has been requested", Point::new(50, 170), style).draw(&mut screen).unwrap();
             }
         }
         log::info!("done");
@@ -118,29 +118,25 @@ fn main() -> ! {
     style.set_background_color(Some(ass_code::MyColor(0, 0)));
 
     let st = format!("pdo amount: {}", pdo_vec.len());
-    Text::new(&st, Point::new(50, 75), style).draw(&mut screen);
+    Text::new(&st, Point::new(50, 75), style).draw(&mut screen).unwrap();
     for pdo in pdo_vec {
         log::info!("print pdo");
         let s = format!("V: {}, I: {}, id: {}", pdo.voltage, pdo.current, pdo.id);
-        Text::new(&s, Point::new(50, 110 + pdo.id as i32 * 25), style).draw(&mut screen);
+        Text::new(&s, Point::new(50, 110 + pdo.id as i32 * 25), style).draw(&mut screen).unwrap();
     }
+
+    let mut adc1 = peripherals.ADC1;
+    let mut adc2 = peripherals.ADC2;
 
     /*
     let mut adc_config1 = AdcConfig::new();
-    let mut adc_config2 = AdcConfig::new();
-    let xp_adc = adc_config2.enable_pin(peripherals.GPIO13, esp_hal::analog::adc::Attenuation::_11dB);
-    let xm_adc = adc_config1.enable_pin(peripherals.GPIO2, esp_hal::analog::adc::Attenuation::_11dB);
-    let yp_adc = adc_config1.enable_pin(peripherals.GPIO1, esp_hal::analog::adc::Attenuation::_11dB);
+    let mut enable_pin = adc_config1.enable_pin(peripherals.GPIO15, esp_hal::analog::adc::Attenuation::_11dB);
+    let mut adc_thing = Adc::new(&mut adc1, adc_config1);
 
-    let mut adc1 = peripherals.ADC1;
-    let mut adc2 = peripherals.ADC2;
-    let mut adc1 = Adc::new(&mut adc1, adc_config1);
-    let mut adc2 = Adc::new(&mut adc2, adc_config2);
+    let v = adc_thing.read_blocking(&mut enable_pin);
+    let v = adc_thing.read_oneshot(&mut enable_pin);
     */
-    let mut adc1 = peripherals.ADC1;
-    let mut adc2 = peripherals.ADC2;
 
-    //adc1.read_oneshot(&a);
     log::info!("init touch!");
     let yp = peripherals.GPIO1;
     let xm = peripherals.GPIO2;
@@ -163,25 +159,28 @@ fn main() -> ! {
     styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x30, 0)));
     styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x10, 0)));
 
-    Text::new("This is a text", Point::new(50, 50), style).draw(&mut screen);
+    Text::new("This is a text", Point::new(50, 50), style).draw(&mut screen).unwrap();
 
     let delay = Delay::new();
     let mut time = 0;
 
+    /*
     let mut adc_config = AdcConfig::new();
     let mut temp_pin =
         adc_config.enable_pin(peripherals.GPIO8, esp_hal::analog::adc::Attenuation::_11dB);
 
     let mut adc = Adc::new(&mut adc1, adc_config);
+    */
 
     let ledc = Ledc::new(peripherals.LEDC);
-    let solder_pin = ledc.channel(Number::Channel0, peripherals.GPIO9);
-    solder_task::<ADC1, GpioPin<8>>(temp_pin, adc, solder_pin);
+    let solder_pin = ledc.channel::<LowSpeed>(Number::Channel0, peripherals.GPIO9);
+
+    //solder_task::<ADC1, GpioPin<8>>(temp_pin, adc, solder_pin);
 
     loop {
         time += 1;
-        let p1 = 0; //ts.get_x(); //crash
-        let p2 = 0; //ts.get_y();
+        let p1 = ts.get_x(); //crash
+        let p2 = ts.get_y();
         if p1 != 0 {
             let ball = Circle::new(Point::new(p2 - 5, p1 - 5), 10);
 
@@ -193,14 +192,14 @@ fn main() -> ! {
             let mut rev_balls = balls.clone();
             rev_balls.reverse();
             for b in rev_balls {
-                b.into_styled(styles[i]).draw(&mut screen);
+                b.into_styled(styles[i]).draw(&mut screen).unwrap();
                 i -= 1;
             }
         }
 
         let str = "This is a text ".to_owned() + &time.to_string();
-        Text::new(&str, Point::new(50, 50), style).draw(&mut screen);
-        info!("Hello world!");
+        Text::new(&str, Point::new(50, 50), style).draw(&mut screen).unwrap();
+        info!("P1: {:4}, P2: {:4}", p1, p2);
         delay.delay_millis(500);
     }
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/v0.23.1/examples/src/bin
@@ -227,7 +226,7 @@ fn solder_task<ADCI, Pinno>(
     let mut bytes = [0u8; 4];
     let mut flash = FlashStorage::new();
 
-    flash.write(0x9000, &[0x1, 0x2, 0x3, 0x4]);
+    flash.write(0x9000, &[0x1, 0x2, 0x3, 0x4]).unwrap();
 
     flash.read(0x9000, &mut bytes).unwrap();
 
@@ -240,7 +239,7 @@ fn solder_task<ADCI, Pinno>(
         //read adc temperature pin
         let mut out: u32 = 0;
         for _ in 0..10 {
-            //out += adc.read_oneshot(&mut temp_pin).unwrap() as u32;
+            out += adc.read_blocking(&mut temp_pin) as u32;
         }
         out /= 10;
 

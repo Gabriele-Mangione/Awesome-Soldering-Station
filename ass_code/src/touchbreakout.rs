@@ -152,7 +152,7 @@ where
 
         let mut adc_val: i32 = 0;
         for i in 0..10 {
-            let out = adc.read_oneshot(&mut xp_adc).unwrap();
+            let out = adc.read_blocking(&mut xp_adc);
             adc_val += out as i32;
         }
         adc_val * self.y_max / 40960
@@ -197,7 +197,7 @@ where
 
         let mut adc_val: i32 = 0;
         for i in 0..10 {
-            let out = adc.read_oneshot(&mut yp_adc).unwrap();
+            let out = adc.read_blocking(&mut yp_adc);
             adc_val += out as i32;
         }
         self.x_max - (adc_val * self.x_max / 40960)
@@ -219,7 +219,7 @@ where
 
         let mut adc_val: i32 = 0;
         for i in 0..10 {
-            let out = adc.read_oneshot(&mut yp_adc).unwrap();
+            let out = adc.read_blocking(&mut yp_adc);
             adc_val += out as i32;
         }
         adc_val / 10
