@@ -13,6 +13,7 @@ name = "ass_code"
 version = "0.1.0"
 dependencies = [
  "critical-section",
+ "embassy",
  "embassy-executor",
  "embedded-graphics",
  "embedded-io",
@@ -156,6 +157,12 @@ checksum = "cb6969eaabd2421f8a2775cfd2471a2b634372b4a25d41e3bd647b79912850a0"
 dependencies = [
  "litrs",
 ]
+
+[[package]]
+name = "embassy"
+version = "0.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "902e14c8b21b6f56f8d21a1c5de34aa3423acc61b136e47ec591d0758c3e77be"
 
 [[package]]
 name = "embassy-embedded-hal"
