@@ -9,7 +9,6 @@ path = "./src/bin/main.rs"
 
 [dependencies]
 critical-section = "1.2.0"
-embassy = "0.0.0"
 embassy-executor = "0.7.0"
 embedded-graphics = "0.8.1"
 embedded-io = "0.6.1"

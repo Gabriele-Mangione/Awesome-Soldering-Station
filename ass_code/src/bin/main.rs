@@ -21,7 +21,7 @@ use esp_hal::clock::CpuClock;
 use esp_hal::cpu_control::{CpuControl, Stack};
 use esp_hal::delay::Delay;
 use esp_hal::gpio::interconnect::PeripheralOutput;
-use esp_hal::gpio::{AnalogPin, AnyPin, GpioPin, Io, Level, Output};
+use esp_hal::gpio::{AnalogPin, AnyPin, GpioPin, Input, Io, Level, Output};
 use esp_hal::ledc::channel::{self, Channel, ChannelHW, ChannelIFace};
 use esp_hal::ledc::timer::{self, TimerIFace};
 use esp_hal::ledc::{self, LSGlobalClkSource, Ledc, LowSpeed};
@@ -66,6 +66,35 @@ fn main() -> ! {
     )
     .unwrap();
     */
+    let pdo_vec: Vec<fusb302::PDO>;
+    let mut style = MonoTextStyle::new(&FONT_10X20, ass_code::MyColor(255, 255));
+
+    let mut pdo_requested = false;
+    {
+        log::info!("init fusb!");
+
+        let mut fusb = fusb302::Fusb::new(
+            peripherals.GPIO5.into(),
+            peripherals.GPIO4.into(),
+            peripherals.I2C0,
+            0x22,
+        );
+        log::info!("scan pds!");
+        pdo_vec = fusb.scan_pds().unwrap();
+        log::info!("request pdo!");
+
+        if pdo_vec.len() > 0 {
+            let found_pdo = pdo_vec.iter().find(|&&x| x.voltage == 9000);
+            if found_pdo.is_some() {
+                fusb.request_pdo(*found_pdo.unwrap(), 3000, 3000).unwrap();
+                pdo_requested = true;
+            }
+        }
+        log::info!("done");
+    }
+
+    let delay = Delay::new();
+    delay.delay_millis(500);
 
     Output::new(peripherals.GPIO35, Level::Low);
     Output::new(peripherals.GPIO36, Level::Low);
@@ -92,34 +121,13 @@ fn main() -> ! {
 
     //Rectangle::new(Point::new(0, 0), Size::new(320, 240));
 
-    let pdo_vec: Vec<fusb302::PDO>;
-    let mut style = MonoTextStyle::new(&FONT_10X20, ass_code::MyColor(255, 255));
-    {
-        log::info!("init fusb!");
-
-        let mut fusb = fusb302::Fusb::new(
-            peripherals.GPIO5.into(),
-            peripherals.GPIO4.into(),
-            peripherals.I2C0,
-            0x22,
-        );
-        log::info!("scan pds!");
-        pdo_vec = fusb.scan_pds().unwrap();
-        log::info!("request pdo!");
-
-        if pdo_vec.len() > 0 {
-            let found_pdo = pdo_vec.iter().find(|&&x| x.voltage == 9000);
-            if found_pdo.is_some() {
-                fusb.request_pdo(*found_pdo.unwrap(), 3000, 3000).unwrap();
-                Text::new("A PDO has been requested", Point::new(50, 170), style)
-                    .draw(&mut screen)
-                    .unwrap();
-            }
-        }
-        log::info!("done");
-    }
-
     style.set_background_color(Some(ass_code::MyColor(0, 0)));
+
+    if pdo_requested == true {
+        Text::new("A PDO has been requested", Point::new(50, 170), style)
+            .draw(&mut screen)
+            .unwrap();
+    }
 
     let st = format!("pdo amount: {}", pdo_vec.len());
     Text::new(&st, Point::new(50, 75), style)
@@ -171,7 +179,6 @@ fn main() -> ! {
         .draw(&mut screen)
         .unwrap();
 
-    let delay = Delay::new();
     let mut time = 0;
 
     let mut adc_config = AdcConfig::new();
@@ -182,12 +189,13 @@ fn main() -> ! {
 
     let mut ledc = Ledc::new(peripherals.LEDC);
     ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
+
     let mut ledc_timer = ledc.timer::<LowSpeed>(timer::Number::Timer0);
     ledc_timer
         .configure(timer::config::Config {
             duty: timer::config::Duty::Duty14Bit, //0- 16384
             clock_source: timer::LSClockSource::APBClk,
-            frequency: 24_u32.kHz(),
+            frequency: RateExtU32::Hz(500),
         })
         .unwrap();
 
@@ -199,6 +207,29 @@ fn main() -> ! {
             pin_config: channel::config::PinConfig::PushPull,
         })
         .unwrap();
+
+    //developing handle code
+    let rxGyro = Input::new(peripherals.GPIO12, esp_hal::gpio::Pull::Down);
+    let mut red_style = MonoTextStyle::new(&FONT_10X20, ass_code::MyColor(255, 0));
+    red_style.set_background_color(Some(ass_code::MyColor(0, 0)));
+    loop {
+        if rxGyro.is_high() {
+            time = 500;
+        } else if time > 0 {
+            time -= 1;
+        }
+
+        if time > 0 {
+            let st = format!("Movement {}", time);
+            Text::new(&st, Point::new(50, 180), style)
+                .draw(&mut screen)
+                .unwrap();
+        } else {
+            Text::new("no Movement      ", Point::new(50, 180), red_style)
+                .draw(&mut screen)
+                .unwrap();
+        }
+    }
 
     solder_task::<ADC1, GpioPin<8>>(temp_pin, adc1, solder_pin);
 

@@ -5,7 +5,7 @@
 #define MPU_INTERRUPT_PIN A7
 
 volatile bool toggler = false;
-ISR(_VECTOR(2)) {
+ISR(PCINT1_vect) {
     //only motion detection is active, so no need to check what interrupt has occurred
     /*
     i2cMpu.beginTransmission(0x4C);
@@ -23,7 +23,7 @@ ISR(_VECTOR(2)) {
     toggler = HIGH;
 }
 
-ISR(_VECTOR(1)){
+ISR(PCINT0_vect){
 
 
 }
@@ -78,6 +78,8 @@ class I2C {
         state = true;
     }
 
+    uint8_t bytesToRead = 0;
+
 
     public:
     I2C(uint8_t _sda,uint8_t _scl, uint8_t _delay_us) : sda(_sda), scl(_scl), delay_us(_delay_us){}; 
@@ -116,6 +118,31 @@ class I2C {
         return ack;
     }
 
+    bool requestFrom(uint8_t address, uint8_t bytes){
+        if(!state){
+            return true;
+        }
+        start_bit();
+        for(int8_t i = 6; i >= 0; i--){
+            write_bit((address >> i) & 0x01);
+        }
+        write_bit(1); //write
+
+        bool ack = read_bit();
+
+        if(ack){
+            stop_bit();
+        }else{
+            bytesToRead = bytes;
+        }
+        return ack;
+
+    }
+
+    uint8_t available(){
+        return bytesToRead;
+    }
+
     uint8_t read(bool stop = false){
         uint8_t data = 0;
         for(int8_t i = 7; i >= 0; i--){
@@ -125,6 +152,9 @@ class I2C {
 
         if(stop || ack){
             stop_bit();
+        }
+        if(!ack){
+            bytesToRead--;
         }
         return data;
     }
@@ -137,7 +167,7 @@ class I2C {
 
 bool mpuInitMVDT() {
 //create new i2c driver
-  I2C TinyWireM(A6, A4,1);
+  I2C TinyWireM(PIN_PA6, PIN_PA4,1);
   TinyWireM.begin();
   delay(1);
   //set to standby
@@ -149,7 +179,7 @@ bool mpuInitMVDT() {
   //interrupt masking
   TinyWireM.beginTransmission(0x4C);
   TinyWireM.write(0x06);
-  TinyWireM.write(0x68);
+  TinyWireM.write(0x04);
   if (TinyWireM.endTransmission())
     return true;
   //activate Anymotion
@@ -185,7 +215,7 @@ bool mpuInitMVDT() {
   TinyWireM.beginTransmission(0x4C);
   TinyWireM.write(0x43);
   //15 bit threshold
-  TinyWireM.write(0x1A);
+  TinyWireM.write(0x4F);
   TinyWireM.write(0x00);
   //debounce
   TinyWireM.write(0x03);
@@ -217,6 +247,7 @@ class OneWireSlave {
 */
 
 void setup(){
+    cli(); //disable interrupts
     delay(10);
     //setting up movement sensor
     
@@ -224,22 +255,49 @@ void setup(){
       delay(10);
   }
   //setup interrupt
-  pinMode(MPU_INTERRUPT_PIN, INPUT_PULLUP);
-  pinMode(A3, INPUT_PULLUP); //RMT
+  pinMode(PIN_PA3, INPUT_PULLUP); //RMT
+  pinMode(PIN_PB2, INPUT_PULLUP); //INT_Gyro
   //MCUCR|=_BV(ISC01); //falling edge
-  GIMSK=_BV(PCIE0 | INT0); //mask pin change interrupt 0
+GIMSK=_BV(PCIE0)| _BV(PCIE1); //mask pin change interrupt 0
   //GIFR=_BV(PCIF0); // pin change interrupt flag 0
-  PCMSK0=_BV(PCINT3); //set interrupt 3, pin PA3
+PCMSK0=_BV(PCINT3); //set interrupt 3, pin PA3
+PCMSK1=_BV(PCINT10); //set interrupt 10, pin PB2
 
   //attachInterrupt(MPU_INTERRUPT_PIN, movementDetectionISR, FALLING);
-  pinMode(A5, OUTPUT);
+  pinMode(PIN_PA5, OUTPUT);
+  pinMode(PIN_PA4, OUTPUT);
+  pinMode(PIN_PA6, OUTPUT);
 
+    sei(); //enable interrupts
 }
 
 bool toggle = false;
 void loop(){
   delay(1);
+  /*
   bool state = digitalRead(A3);
   digitalWrite(A5, state);
+  */
   //toggler = LOW;
+  //digitalWrite(PIN_PA5, !digitalRead(PIN_PB2));
+
+  if (toggler == HIGH) {
+    toggler = LOW;
+  I2C TinyWireM(PIN_PA6, PIN_PA4,1);
+    TinyWireM.beginTransmission(0x4C);
+    TinyWireM.write(0x14);
+    TinyWireM.endTransmission();
+    TinyWireM.requestFrom(0x4C, 1);
+    //while (TinyWireM.available()){
+    //while(i2cMpu.available()){
+        if (TinyWireM.read() & 0x04) {
+        //Motion detected
+        digitalWrite(A5, HIGH);
+        }
+    //}
+        //digitalWrite(A5, HIGH);
+  }
+  else {
+    digitalWrite(A5, LOW);
+  }
 }
