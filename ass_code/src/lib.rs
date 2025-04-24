@@ -5,7 +5,7 @@ use embedded_graphics::{prelude::{PixelColor, RawData}, pixelcolor::raw::RawU16}
 
 pub mod fusb302;
 pub mod ili9341;
-pub mod touchbreakout;
+pub mod touchbreakout_cap;
 #[derive(Copy, PartialEq, Clone)]
 pub struct MyColor(pub u8, pub u8);
 

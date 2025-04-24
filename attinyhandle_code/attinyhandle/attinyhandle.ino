@@ -5,7 +5,8 @@
 #define MPU_INTERRUPT_PIN A7
 
 volatile bool toggler = false;
-ISR(PCINT1_vect) {
+volatile bool magnet = false;
+ISR(INT0_vect) {
     //only motion detection is active, so no need to check what interrupt has occurred
     /*
     i2cMpu.beginTransmission(0x4C);
@@ -25,6 +26,7 @@ ISR(PCINT1_vect) {
 
 ISR(PCINT0_vect){
 
+    magnet = !digitalRead(PIN_PA3);
 
 }
 
@@ -257,11 +259,11 @@ void setup(){
   //setup interrupt
   pinMode(PIN_PA3, INPUT_PULLUP); //RMT
   pinMode(PIN_PB2, INPUT_PULLUP); //INT_Gyro
-  //MCUCR|=_BV(ISC01); //falling edge
-GIMSK=_BV(PCIE0)| _BV(PCIE1); //mask pin change interrupt 0
+  MCUCR|=_BV(ISC01); //falling edge
+GIMSK=_BV(PCIE0)| _BV(INT0); //mask pin change interrupt 0
   //GIFR=_BV(PCIF0); // pin change interrupt flag 0
 PCMSK0=_BV(PCINT3); //set interrupt 3, pin PA3
-PCMSK1=_BV(PCINT10); //set interrupt 10, pin PB2
+//PCMSK1=_BV(PCINT10); //set interrupt 10, pin PB2
 
   //attachInterrupt(MPU_INTERRUPT_PIN, movementDetectionISR, FALLING);
   pinMode(PIN_PA5, OUTPUT);
@@ -296,6 +298,9 @@ void loop(){
         }
     //}
         //digitalWrite(A5, HIGH);
+  }
+  else if (magnet == HIGH){
+    digitalWrite(A5, HIGH);
   }
   else {
     digitalWrite(A5, LOW);

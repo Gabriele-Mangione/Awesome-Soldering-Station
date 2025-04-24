@@ -41,7 +41,7 @@ use static_cell::StaticCell;
 
 use ass_code::fusb302;
 use ass_code::ili9341;
-use ass_code::touchbreakout::{self, Pinny, TouchBreakout};
+use ass_code::touchbreakout_cap::{self,TouchBreakoutCap};
 use embedded_graphics::{self, Drawable};
 
 static mut APP_CORE_STACK: Stack<8192> = Stack::new();
@@ -94,7 +94,7 @@ fn main() -> ! {
     }
 
     let delay = Delay::new();
-    delay.delay_millis(500);
+    //delay.delay_millis(500);
 
     Output::new(peripherals.GPIO35, Level::Low);
     Output::new(peripherals.GPIO36, Level::Low);
@@ -212,10 +212,11 @@ fn main() -> ! {
     let rxGyro = Input::new(peripherals.GPIO12, esp_hal::gpio::Pull::Down);
     let mut red_style = MonoTextStyle::new(&FONT_10X20, ass_code::MyColor(255, 0));
     red_style.set_background_color(Some(ass_code::MyColor(0, 0)));
+
     loop {
         if rxGyro.is_high() {
             time = 500;
-        } else if time > 0 {
+        } else if time >= 0 {
             time -= 1;
         }
 
@@ -224,7 +225,7 @@ fn main() -> ! {
             Text::new(&st, Point::new(50, 180), style)
                 .draw(&mut screen)
                 .unwrap();
-        } else {
+        } else if time == 0 {
             Text::new("no Movement      ", Point::new(50, 180), red_style)
                 .draw(&mut screen)
                 .unwrap();
