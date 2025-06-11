@@ -151,15 +151,21 @@ fn main() -> ! {
     */
 
     log::info!("init touch!");
-    let yp = peripherals.GPIO1;
-    let xm = peripherals.GPIO2;
-    let ym = peripherals.GPIO14;
-    let xp = peripherals.GPIO13;
+    /*
+    let yp = peripherals.GPIO1; //irq
+    let xm = peripherals.GPIO2; //gnd
+    let ym = peripherals.GPIO14; //sda
+    let xp = peripherals.GPIO13; //scl
+                                 */
 
     let mut adc1_clone = unsafe { peripherals.ADC1.clone_unchecked() };
     let mut adc2 = peripherals.ADC2;
 
-    let mut ts = TouchBreakout::new(xp, yp, xm, ym, 320, 240, &mut adc1_clone, &mut adc2);
+    let ts_sda = peripherals.GPIO14;
+    let ts_scl = peripherals.GPIO13;
+    let ts_irq = peripherals.GPIO1;
+
+    let mut ts = TouchBreakoutCap::new(ts_sda.into(), ts_scl.into(), peripherals.I2C1);
 
     let mut balls: Vec<Circle> = vec![];
 
@@ -213,6 +219,7 @@ fn main() -> ! {
     let mut red_style = MonoTextStyle::new(&FONT_10X20, ass_code::MyColor(255, 0));
     red_style.set_background_color(Some(ass_code::MyColor(0, 0)));
 
+    /*
     loop {
         if rxGyro.is_high() {
             time = 500;
@@ -231,13 +238,15 @@ fn main() -> ! {
                 .unwrap();
         }
     }
+    */
 
     solder_task::<ADC1, GpioPin<8>>(temp_pin, adc1, solder_pin);
 
     loop {
         time += 1;
-        let p1 = ts.get_x(); //crash
-        let p2 = ts.get_y();
+        let t = ts.read_points().unwrap();
+        let p1 = t.0.x as i32; //crash
+        let p2 = t.0.y as i32;
         if p1 != 0 {
             let ball = Circle::new(Point::new(p2 - 5, p1 - 5), 10);
 
