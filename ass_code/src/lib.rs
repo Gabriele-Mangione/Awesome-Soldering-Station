@@ -3,6 +3,7 @@
 use embedded_graphics::{prelude::{PixelColor, RawData}, pixelcolor::raw::RawU16};
 
 
+pub mod soldering;
 pub mod fusb302;
 pub mod ili9341;
 pub mod touchbreakout_cap;

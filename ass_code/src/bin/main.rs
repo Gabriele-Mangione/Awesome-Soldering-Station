@@ -240,7 +240,8 @@ fn main() -> ! {
     }
     */
 
-    solder_task::<ADC1, GpioPin<8>>(temp_pin, adc1, solder_pin);
+    //solder_task::<ADC1, GpioPin<8>>(temp_pin, adc1, solder_pin);
+
 
     loop {
         time += 1;
