@@ -5,9 +5,10 @@ extern crate alloc;
 use core::ptr::addr_of_mut;
 
 use alloc::borrow::ToOwned;
-use alloc::string::ToString;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use alloc::{format, vec};
+use embassy_time::Timer;
 use embedded_graphics::mono_font::ascii::FONT_10X20;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::prelude::{Point, Size};
@@ -41,38 +42,26 @@ use static_cell::StaticCell;
 
 use ass_code::fusb302;
 use ass_code::ili9341;
-use ass_code::touchbreakout_cap::{self,TouchBreakoutCap};
+use ass_code::touchbreakout_cap::{self, TouchBreakoutCap, TouchEventFlag};
 use embedded_graphics::{self, Drawable};
 
 static mut APP_CORE_STACK: Stack<8192> = Stack::new();
 
-#[main]
-fn main() -> ! {
+#[esp_hal_embassy::main]
+async fn main(spawner: Spawner) {
     // generator version: 0.2.2
-
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
-
     esp_println::logger::init_logger_from_env();
 
     esp_alloc::heap_allocator!(72 * 1024);
-    /*
 
-    let timg0 = TimerGroup::new(peripherals.TIMG0);
-    let _init = esp_wifi::init(
-        timg0.timer0,
-        esp_hal::rng::Rng::new(peripherals.RNG),
-        peripherals.RADIO_CLK,
-    )
-    .unwrap();
-    */
+    // init fusb, select 9 volt
     let pdo_vec: Vec<fusb302::PDO>;
-    let mut style = MonoTextStyle::new(&FONT_10X20, ass_code::MyColor(255, 255));
 
     let mut pdo_requested = false;
     {
         log::info!("init fusb!");
-
         let mut fusb = fusb302::Fusb::new(
             peripherals.GPIO5.into(),
             peripherals.GPIO4.into(),
@@ -82,7 +71,6 @@ fn main() -> ! {
         log::info!("scan pds!");
         pdo_vec = fusb.scan_pds().unwrap();
         log::info!("request pdo!");
-
         if pdo_vec.len() > 0 {
             let found_pdo = pdo_vec.iter().find(|&&x| x.voltage == 9000);
             if found_pdo.is_some() {
@@ -93,9 +81,11 @@ fn main() -> ! {
         log::info!("done");
     }
 
-    let delay = Delay::new();
-    //delay.delay_millis(500);
+    let timg0 = TimerGroup::new(peripherals.TIMG0);
+    esp_hal_embassy::init(timg0.timer0);
+    //let delay = Delay::new();
 
+    //for some reason necessary when using reg write for pins. DON'T DELETE
     Output::new(peripherals.GPIO35, Level::Low);
     Output::new(peripherals.GPIO36, Level::Low);
     Output::new(peripherals.GPIO37, Level::Low);
@@ -109,7 +99,9 @@ fn main() -> ! {
     Output::new(peripherals.GPIO47, Level::Low);
     Output::new(peripherals.GPIO48, Level::Low);
 
+    //init screen
     let mut screen = ass_code::ili9341::ILI9341::new();
+
     let mut style = MonoTextStyle::new(&FONT_10X20, ass_code::MyColor(255, 255));
     style.set_background_color(Some(ass_code::MyColor(0, 0)));
 
@@ -119,18 +111,14 @@ fn main() -> ! {
         .draw(&mut screen)
         .unwrap();
 
-    //Rectangle::new(Point::new(0, 0), Size::new(320, 240));
-
-    style.set_background_color(Some(ass_code::MyColor(0, 0)));
-
+    //print pdo info to screen
     if pdo_requested == true {
         Text::new("A PDO has been requested", Point::new(50, 170), style)
             .draw(&mut screen)
             .unwrap();
     }
-
-    let st = format!("pdo amount: {}", pdo_vec.len());
-    Text::new(&st, Point::new(50, 75), style)
+    let pdo_info = format!("pdo amount: {}", pdo_vec.len());
+    Text::new(&pdo_info, Point::new(50, 75), style)
         .draw(&mut screen)
         .unwrap();
     for pdo in pdo_vec {
@@ -141,34 +129,14 @@ fn main() -> ! {
             .unwrap();
     }
 
-    /*
-    let mut adc_config1 = AdcConfig::new();
-    let mut enable_pin = adc_config1.enable_pin(peripherals.GPIO15, esp_hal::analog::adc::Attenuation::_11dB);
-    let mut adc_thing = Adc::new(&mut adc1, adc_config1);
-
-    let v = adc_thing.read_blocking(&mut enable_pin);
-    let v = adc_thing.read_oneshot(&mut enable_pin);
-    */
-
     log::info!("init touch!");
-    /*
-    let yp = peripherals.GPIO1; //irq
-    let xm = peripherals.GPIO2; //gnd
-    let ym = peripherals.GPIO14; //sda
-    let xp = peripherals.GPIO13; //scl
-                                 */
-
-    let mut adc1_clone = unsafe { peripherals.ADC1.clone_unchecked() };
-    let mut adc2 = peripherals.ADC2;
-
     let ts_sda = peripherals.GPIO14;
     let ts_scl = peripherals.GPIO13;
     let ts_irq = peripherals.GPIO1;
-
     let mut ts = TouchBreakoutCap::new(ts_sda.into(), ts_scl.into(), peripherals.I2C1);
 
+    //touch circles
     let mut balls: Vec<Circle> = vec![];
-
     let mut styles = vec![];
     styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0xF8, 0)));
     styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0xE0, 0)));
@@ -190,7 +158,6 @@ fn main() -> ! {
     let mut adc_config = AdcConfig::new();
     let temp_pin =
         adc_config.enable_pin(peripherals.GPIO8, esp_hal::analog::adc::Attenuation::_11dB);
-
     let adc1 = Adc::new(peripherals.ADC1, adc_config);
 
     let mut ledc = Ledc::new(peripherals.LEDC);
@@ -240,15 +207,17 @@ fn main() -> ! {
     }
     */
 
-    solder_task::<ADC1, GpioPin<8>>(temp_pin, adc1, solder_pin);
+    //solder_task::<ADC1, GpioPin<8>>(temp_pin, adc1, solder_pin);
+    //
+
+    //spawner.spawn(handle_touch_events(ts)).unwrap();
 
     loop {
         time += 1;
-        let t = ts.read_points().unwrap();
         let p1 = t.0.x as i32; //crash
-        let p2 = t.0.y as i32;
+        let p2 = 320i32 - t.0.y as i32;
         if p1 != 0 {
-            let ball = Circle::new(Point::new(p2 - 5, p1 - 5), 10);
+            let ball = Circle::new(Point::new(p2 - 5, p1 - 5), 5u32);
 
             balls.insert(0, ball);
             if balls.len() > 10 {
@@ -267,10 +236,32 @@ fn main() -> ! {
         Text::new(&str, Point::new(50, 50), style)
             .draw(&mut screen)
             .unwrap();
-        info!("P1: {:4}, P2: {:4}", p1, p2);
-        delay.delay_millis(500);
+
+        Timer::after_millis(5).await;
     }
-    // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/v0.23.1/examples/src/bin
+}
+
+#[embassy_executor::task]
+async fn handle_touch_events() {
+    //create interrupt for ts
+
+    //use await to be awaken by interrupt?
+
+    //distinguish type of touch and check if clicked a button in window
+    /*
+    loop {
+        let t = ts.read_points().unwrap();
+
+        let s = match t.0.event_flag {
+            TouchEventFlag::Contact => "Contact",
+            TouchEventFlag::LiftUp => "LiftUp",
+            TouchEventFlag::PressDown => "PressDown",
+            TouchEventFlag::NoEvent => "NoEvent",
+        };
+        esp_println::println!("P1: \tx: {:4}\ty: {:4}\te: {}", t.0.x, t.0.y, s);
+        Timer::after_millis(5).await;
+    }
+    */
 }
 
 fn calib_temp_points<ADCI, Pinno>(
@@ -400,7 +391,7 @@ fn solder_task<ADCI, Pinno>(
             //would be really cool to have a visualisation of the PID stuff on the screen.
         }
 
-        let delay = Delay::new();
-        delay.delay_millis(50);
+        //let delay = Delay::new();
+        //delay.delay_millis(50);
     }
 }

@@ -14,6 +14,7 @@ version = "0.1.0"
 dependencies = [
  "critical-section",
  "embassy-executor",
+ "embassy-time",
  "embedded-graphics",
  "embedded-io",
  "embedded-storage",

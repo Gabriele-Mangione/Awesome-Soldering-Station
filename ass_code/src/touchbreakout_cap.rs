@@ -11,7 +11,7 @@ use esp_hal::{
     Blocking,
 };
 
-use core::{borrow::BorrowMut, char::from_digit, ptr::write_volatile};
+use core::{borrow::BorrowMut, char::from_digit, fmt, ptr::write_volatile};
 
 //use crate::adc_monitor_link::*;TouchBreakoutCap
 //TODO:
@@ -59,13 +59,30 @@ const FOCALTECH_ID_REG: u8 = 0xA8;
 const RELEASE_CODE_ID_REG: u8 = 0xAF;
 const STATE_REG: u8 = 0xBC;
 
+pub enum TouchEventFlag {
+    PressDown,
+    LiftUp,
+    Contact,
+    NoEvent
+}
+
+impl TouchEventFlag {
+    fn from(n: u8) -> Self{
+        match n {
+            0 => Self::PressDown,
+            1 => Self::LiftUp,
+            2 => Self::Contact,
+            3.. => Self::NoEvent
+        }
+    }
+}
 pub struct Touch {
     pub x: u16,
     pub y: u16,
-    pub weight: u8,
-    pub area: u8,
+    //pub weight: u8,
+    //pub area: u8,
     pub id: u8,
-    pub event_flag: u8,
+    pub event_flag: TouchEventFlag,
 }
 
 pub struct TouchBreakoutCap<'a> {
@@ -95,20 +112,20 @@ impl TouchBreakoutCap<'_> {
         let t0: Touch = Touch {
             x: (((r[0] & 0x0F) as u16) << 8) | r[1] as u16,
             y: (((r[2] & 0x0F) as u16) << 8) | r[3] as u16,
-            weight: r[4],
-            area: r[5],
+            //weight: r[4],
+            //area: r[5] >> 4,
             id: r[2] >> 4,
-            event_flag: r[0] >> 6,
+            event_flag: TouchEventFlag::from(r[0] >> 6),
         };
         if (self.read_reg(TD_STATUS_REG)?) == 2 {
             self.read_reg_to_buf(P2_XH_REG, &mut r)?;
             let t1: Touch = Touch {
                 x: (((r[0] & 0x0F) as u16) << 8) | r[1] as u16,
                 y: (((r[2] & 0x0F) as u16) << 8) | r[3] as u16,
-                weight: r[4],
-                area: r[5],
+                //weight: r[4],
+                //area: r[5] >> 4,
                 id: r[2] >> 4,
-                event_flag: r[0] >> 6,
+                event_flag: TouchEventFlag::from(r[0] >> 6),
             };
 
             return Ok((t0, Some(t1)));
