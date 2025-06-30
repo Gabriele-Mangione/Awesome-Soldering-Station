@@ -212,6 +212,7 @@ async fn main(spawner: Spawner) {
 
     //spawner.spawn(handle_touch_events(ts)).unwrap();
 
+
     loop {
         time += 1;
         let p1 = t.0.x as i32; //crash
