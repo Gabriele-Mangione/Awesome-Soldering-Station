@@ -1,4 +1,4 @@
-# ✨ Open-Source USB-C PD Soldering Station ✨
+# ✨ Awesome Soldering Station ✨
 
 ---
 
