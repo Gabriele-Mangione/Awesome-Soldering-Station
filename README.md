@@ -37,7 +37,7 @@ The hardware is meticulously designed in **Altium Designer** and comprises two d
 These two boards are interconnected by a cable, chosen for both its both comfort and flexibility during use, while ensuring reliable high-current power transmission without impedance issues. (I tested a lot of different ones)
 
 The enclosure for the main station and the handle itself are both **3D printed**. This approach allows for a custom, ergonomic design and simplifies prototyping and production.
-![](https://github.com/Gabriele-Mangione/Awesome-Soldering-Station/blob/Rust/images/3DModels.jpg?raw=true)
+![](https://github.com/Gabriele-Mangione/Awesome-Soldering-Station/blob/Rust/images/3DModels.png?raw=true)
 
 
 ## Development Status & Technologies Used 💻
