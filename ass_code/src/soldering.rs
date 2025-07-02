@@ -1,55 +1,72 @@
-use esp_hal::{analog::adc::{self, Adc, AdcChannel, AdcConfig, AdcPin}, gpio::AnalogPin, ledc::{channel::{Channel, ChannelHW}, LowSpeed}, peripheral::Peripheral};
+use esp_hal::{analog::adc::{self, Adc, AdcChannel, AdcConfig, AdcPin}, gpio::{AnalogPin, AnyPin, OutputPin}, ledc::{channel::{self, Channel, ChannelHW, ChannelIFace}, timer::{self, Number, TimerIFace}, LSGlobalClkSource, Ledc, LowSpeed}, peripheral::Peripheral, peripherals::{ADC1, LEDC}};
 use esp_storage::FlashStorage;
 use embedded_storage::{ReadStorage, Storage};
 use log::info;
+use esp_hal::time::RateExtU32;
 
-struct Soldering<'a,PIN, ADCI>
+pub struct Soldering<ADCI>
 where
     ADCI: adc::RegisterAccess + Peripheral,
-    PIN: AdcChannel + AnalogPin,
 {
-    tmp_pin: AdcPin<PIN, ADCI>,
-    adc: Adc<'a,ADCI>,
+    solder_pin: AnyPin,
+    tmp_pin: AnyPin,
+    adc_peripheral:ADCI,
+    ledc_peripheral: LEDC,
 
     flash: FlashStorage
 }
 
-impl<PIN, ADCI> Soldering<'_,PIN, ADCI>
+impl<ADCI> Soldering<ADCI>
 where
     //ADCI: Peripheral,
     ADCI: adc::RegisterAccess + Peripheral<P=ADCI>,
-    PIN: AdcChannel + AnalogPin,
 {
-    fn new(tmp_pin: PIN, adc: ADCI, flash: FlashStorage) -> Self {
-        let mut adc_config = AdcConfig::new();
-        let mut tmp_pin = adc_config.enable_pin(tmp_pin, esp_hal::analog::adc::Attenuation::_11dB);
-        let mut adc = Adc::new(adc, adc_config);
-        Self { tmp_pin, adc, flash }
+    pub fn new(solder_pin:AnyPin, tmp_pin: AnyPin, adc_peripheral: ADCI, ledc_peripheral: LEDC, flash: FlashStorage) -> Self {
+        Self { solder_pin, tmp_pin, adc_peripheral,ledc_peripheral, flash }
     }
 }
 
-impl<PIN, ADCI> Soldering<'_,PIN, ADCI>
-where
-    ADCI: adc::RegisterAccess + Peripheral,
-    PIN: AdcChannel + AnalogPin,
+impl Soldering<ADC1>
 {
-    fn read_temp(&mut self) -> u16 {
-        self.adc.read_blocking(&mut self.tmp_pin)
-    }
 
-    pub fn task(&mut self) -> embassy_executor::SpawnToken<impl Sized> {
+    pub fn task(self) -> embassy_executor::SpawnToken<impl Sized> {
         solder_task(self)
     }
 }
 
 
 #[embassy_executor::task]
-async fn solder_task<'a,PIN, ADCI>( s:&mut Soldering<'a,PIN,ADCI>)
-where
-    //ADCI: Peripheral,
-    ADCI: adc::RegisterAccess + Peripheral<P=ADCI>,
-    PIN: AdcChannel + AnalogPin,
+async fn solder_task( s:Soldering<ADC1>)
 {
+    let mut ledc = Ledc::new(s.ledc_peripheral);
+    ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
+
+    let mut ledc_timer = ledc.timer::<LowSpeed>(Number::Timer0);
+    ledc_timer
+        .configure(timer::config::Config {
+            duty: timer::config::Duty::Duty14Bit, //0- 16384
+            clock_source: timer::LSClockSource::APBClk,
+            frequency: RateExtU32::Hz(500),
+        })
+        .unwrap();
+
+    let mut solder_pin = ledc.channel(channel::Number::Channel0, s.solder_pin);
+    solder_pin
+        .configure(channel::config::Config {
+            timer: &ledc_timer,
+            duty_pct: 0,
+            pin_config: channel::config::PinConfig::PushPull,
+        })
+        .unwrap();
+
+        let mut adc_config = AdcConfig::new();
+        let mut tmp_pin = adc_config.enable_pin(s.tmp_pin, esp_hal::analog::adc::Attenuation::_11dB);
+        let mut adc = Adc::new(s.adc_peripheral, adc_config);
+        
+
+
+        adc.read_blocking(&mut tmp_pin);
+
     let set_temp: u16 = 380;
     //to calibrate
     //1. ki = 0, kd = 0, adjust kp so that the first peak is near the set temp
@@ -63,7 +80,6 @@ where
     let mut int_diff: f32 = 0.;
 
     //read saved temperature calibration values
-    //
     let mut bytes = [0u8; 4];
     let mut flash = FlashStorage::new();
 
@@ -80,11 +96,11 @@ where
     let mut old_duty: u16 = 0;
     loop {
         //turn off voltage for measurement
-        s.solder_pin.set_duty_hw(0);
+        solder_pin.set_duty_hw(0);
         //read adc temperature pin
         let mut out: u32 = 0;
         for _ in 0..10 {
-            out += s.adc.read_blocking(&mut s.temp_pin) as u32;
+            out += adc.read_blocking(&mut tmp_pin) as u32;
         }
         out /= 10;
 
@@ -111,7 +127,7 @@ where
             //adjust output duty cycle
             let duty_cycle: u16 = ((pro_diff + int_diff + der_diff) as u16).clamp(0, 16384);
 
-            s.solder_pin.set_duty_hw(duty_cycle as u32);
+            solder_pin.set_duty_hw(duty_cycle as u32);
 
             info!(
                 "act_temp: {}, set_temp: {}, duty_cycle: {}",
@@ -129,3 +145,48 @@ where
 
     }
 }
+
+
+/*
+fn calib_temp_points<ADCI, Pinno>(
+    mut temp_pin: AdcPin<Pinno, ADCI>,
+    mut adc: Adc<ADCI>,
+    solder_pin: Channel<LowSpeed>,
+) where
+    ADCI: adc::RegisterAccess,
+    Pinno: AnalogPin + AdcChannel,
+{
+    //activate output and show buttons
+
+    //user must augment output until the externally measured temperature reaches STABLE 100°C
+
+    //the measured value shall be saved
+    solder_pin.set_duty_hw(0);
+    let mut out: u32 = 0;
+    for _ in 0..10 {
+        out += adc.read_blocking(&mut temp_pin) as u32;
+    }
+    out /= 10;
+    let p_at_100c: u16 = out as u16;
+
+    //repeat for 400°C
+
+    //save button
+    solder_pin.set_duty_hw(0);
+    out = 0;
+    for _ in 0..10 {
+        out += adc.read_blocking(&mut temp_pin) as u32;
+    }
+    out /= 10;
+    let p_at_400c: u16 = out as u16;
+
+    let mut bytes = [0u8; 4];
+    bytes[0] = (p_at_100c >> 8) as u8;
+    bytes[1] = (p_at_100c) as u8;
+    bytes[2] = (p_at_400c >> 8) as u8;
+    bytes[3] = (p_at_400c) as u8;
+    //write new calibration values to flash
+    let mut flash = FlashStorage::new();
+    flash.write(0x9000, &[0x1, 0x2, 0x3, 0x4]).unwrap();
+}
+*/

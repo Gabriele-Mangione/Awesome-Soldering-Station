@@ -93,7 +93,7 @@ impl Fusb<'_> {
 
         //return Ok(pdo_vec);
         //set auto crc separately (voltage goes to 0 if done together with previous)
-        switches1 |= 0x04;
+        //switches1 |= 0x04;
         //self.write_reg(0x03, switches1)?; //CRASHES HERE!!!!
         //return Ok(pdo_vec);
 

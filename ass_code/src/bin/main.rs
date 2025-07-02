@@ -2,12 +2,15 @@
 #![no_main]
 
 extern crate alloc;
+use core::cell::RefCell;
 use core::ptr::addr_of_mut;
 
 use alloc::borrow::ToOwned;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use alloc::{format, vec};
+use ass_code::soldering::Soldering;
+use critical_section::Mutex;
 use embassy_time::Timer;
 use embedded_graphics::mono_font::ascii::FONT_10X20;
 use embedded_graphics::mono_font::MonoTextStyle;
@@ -23,14 +26,15 @@ use esp_hal::cpu_control::{CpuControl, Stack};
 use esp_hal::delay::Delay;
 use esp_hal::gpio::interconnect::PeripheralOutput;
 use esp_hal::gpio::{AnalogPin, AnyPin, GpioPin, Input, Io, Level, Output};
+use esp_hal::interrupt::InterruptConfigurable;
 use esp_hal::ledc::channel::{self, Channel, ChannelHW, ChannelIFace};
 use esp_hal::ledc::timer::{self, TimerIFace};
 use esp_hal::ledc::{self, LSGlobalClkSource, Ledc, LowSpeed};
 use esp_hal::peripheral::Peripheral;
-use esp_hal::peripherals::{ADC1, LEDC};
+use esp_hal::peripherals::{ADC1, I2C1, IO_MUX, LEDC};
 use esp_hal::time::RateExtU32;
 use esp_hal::timer::timg::TimerGroup;
-use esp_hal::{main, peripherals};
+use esp_hal::{handler, main, peripherals, ram};
 use esp_storage::FlashStorage;
 use log::info;
 
@@ -40,7 +44,7 @@ use embassy_executor::Spawner;
 use esp_hal_embassy::Executor;
 use static_cell::StaticCell;
 
-use ass_code::fusb302;
+use ass_code::{fusb302, soldering};
 use ass_code::ili9341;
 use ass_code::touchbreakout_cap::{self, TouchBreakoutCap, TouchEventFlag};
 use embedded_graphics::{self, Drawable};
@@ -130,24 +134,6 @@ async fn main(spawner: Spawner) {
     }
 
     log::info!("init touch!");
-    let ts_sda = peripherals.GPIO14;
-    let ts_scl = peripherals.GPIO13;
-    let ts_irq = peripherals.GPIO1;
-    let mut ts = TouchBreakoutCap::new(ts_sda.into(), ts_scl.into(), peripherals.I2C1);
-
-    //touch circles
-    let mut balls: Vec<Circle> = vec![];
-    let mut styles = vec![];
-    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0xF8, 0)));
-    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0xE0, 0)));
-    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0xD0, 0)));
-    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0xC0, 0)));
-    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0xB0, 0)));
-    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x90, 0)));
-    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x70, 0)));
-    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x50, 0)));
-    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x30, 0)));
-    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x10, 0)));
 
     Text::new("This is a text", Point::new(50, 50), style)
         .draw(&mut screen)
@@ -209,17 +195,35 @@ async fn main(spawner: Spawner) {
 
     //solder_task::<ADC1, GpioPin<8>>(temp_pin, adc1, solder_pin);
     //
+    let mut flash = FlashStorage::new();
+    let mut soldering = Soldering::new(solder_pin, temp_pin, peripherals.ADC1, peripherals.LEDC, flash);
 
-    //spawner.spawn(handle_touch_events(ts)).unwrap();
+    //spawner.spawn(soldering.task());
+    let ts_sda = peripherals.GPIO14;
+    let ts_scl = peripherals.GPIO13;
+    let ts_irq = peripherals.GPIO1;
+    spawner.spawn(handle_touch_events(ts_sda.into(),ts_scl.into(),ts_irq.into(), peripherals.IO_MUX, peripherals.I2C1));
 
+    //touch circles
+    let mut balls: Vec<Circle> = vec![];
+    let mut styles = vec![];
+    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0xF8, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0xE0, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0xD0, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0xC0, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0xB0, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x90, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x70, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x50, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x30, 0)));
+    styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x10, 0)));
 
     loop {
         time += 1;
-        let p1 = t.0.x as i32; //crash
+        let p1 = t.0.x as i32;
         let p2 = 320i32 - t.0.y as i32;
         if p1 != 0 {
             let ball = Circle::new(Point::new(p2 - 5, p1 - 5), 5u32);
-
             balls.insert(0, ball);
             if balls.len() > 10 {
                 balls.pop();
@@ -232,24 +236,34 @@ async fn main(spawner: Spawner) {
                 i -= 1;
             }
         }
-
         let str = "This is a text ".to_owned() + &time.to_string();
         Text::new(&str, Point::new(50, 50), style)
             .draw(&mut screen)
             .unwrap();
-
         Timer::after_millis(5).await;
     }
 }
 
+
+static IRQ: Mutex<RefCell<Option<Input>>> = Mutex::new(RefCell::new(None));
+
 #[embassy_executor::task]
-async fn handle_touch_events() {
+async fn handle_touch_events(ts_sda: AnyPin, ts_scl: AnyPin, ts_irq: AnyPin, io_mux: IO_MUX, i2c1: I2C1) {
+    let mut ts = TouchBreakoutCap::new(ts_sda.into(), ts_scl.into(), i2c1);
+
     //create interrupt for ts
+    let mut io = Io::new(io_mux);
+    io.set_interrupt_handler(ts_handler);
+
+    let mut irq_pin = Input::new(ts_irq, esp_hal::gpio::Pull::Up);
+
+    critical_section::with(|cs| {
+        irq_pin.listen(esp_hal::gpio::Event::FallingEdge);
+    });
 
     //use await to be awaken by interrupt?
 
     //distinguish type of touch and check if clicked a button in window
-    /*
     loop {
         let t = ts.read_points().unwrap();
 
@@ -262,137 +276,11 @@ async fn handle_touch_events() {
         esp_println::println!("P1: \tx: {:4}\ty: {:4}\te: {}", t.0.x, t.0.y, s);
         Timer::after_millis(5).await;
     }
-    */
 }
 
-fn calib_temp_points<ADCI, Pinno>(
-    mut temp_pin: AdcPin<Pinno, ADCI>,
-    mut adc: Adc<ADCI>,
-    solder_pin: Channel<LowSpeed>,
-) where
-    ADCI: adc::RegisterAccess,
-    Pinno: AnalogPin + AdcChannel,
-{
-    //activate output and show buttons
 
-    //user must augment output until the externally measured temperature reaches STABLE 100°C
+#[handler]
+#[ram]
+fn ts_handler() {
 
-    //the measured value shall be saved
-    solder_pin.set_duty_hw(0);
-    let mut out: u32 = 0;
-    for _ in 0..10 {
-        out += adc.read_blocking(&mut temp_pin) as u32;
-    }
-    out /= 10;
-    let p_at_100c: u16 = out as u16;
-
-    //repeat for 400°C
-
-    //save button
-    solder_pin.set_duty_hw(0);
-    out = 0;
-    for _ in 0..10 {
-        out += adc.read_blocking(&mut temp_pin) as u32;
-    }
-    out /= 10;
-    let p_at_400c: u16 = out as u16;
-
-    let mut bytes = [0u8; 4];
-    bytes[0] = (p_at_100c >> 8) as u8;
-    bytes[1] = (p_at_100c) as u8;
-    bytes[2] = (p_at_400c >> 8) as u8;
-    bytes[3] = (p_at_400c) as u8;
-    //write new calibration values to flash
-    let mut flash = FlashStorage::new();
-    flash.write(0x9000, &[0x1, 0x2, 0x3, 0x4]).unwrap();
-}
-
-//#[embassy_executor::task]
-fn solder_task<ADCI, Pinno>(
-    mut temp_pin: AdcPin<Pinno, ADCI>,
-    mut adc: Adc<ADCI>,
-    solder_pin: Channel<LowSpeed>,
-) where
-    ADCI: adc::RegisterAccess,
-    Pinno: AnalogPin + AdcChannel,
-{
-    let set_temp: u16 = 380;
-    //to calibrate
-    //1. ki = 0, kd = 0, adjust kp so that the first peak is near the set temp
-    //2. drive ki up to the point where the temp is stable at the set temp. (there will be an
-    //   overshoot where the first peak was
-    //3. adjust kd to flatten the overshoot
-    let kp: f32 = 0.8;
-    let ki: f32 = 0.005;
-    let kd: f32 = 0.5;
-    let mut old_diff: f32 = 0.;
-    let mut int_diff: f32 = 0.;
-
-    //read saved temperature calibration values
-    //
-    let mut bytes = [0u8; 4];
-    let mut flash = FlashStorage::new();
-
-    flash.write(0x9000, &[0x1, 0x2, 0x3, 0x4]).unwrap();
-
-    flash.read(0x9000, &mut bytes).unwrap();
-
-    //todo convert 2bytes to u16...
-    let p_at_100c: u16 = ((bytes[0] as u16) << 8) | bytes[1] as u16;
-    let p_at_400c: u16 = ((bytes[2] as u16) << 8) | bytes[3] as u16;
-    info!("p @ 100°C: {:5}, p @ 400°C: {:5}", p_at_100c, p_at_400c);
-
-    let mut act_temp: f32 = 0.;
-    let mut old_duty: u16 = 0;
-    loop {
-        //turn off voltage for measurement
-        solder_pin.set_duty_hw(0);
-        //read adc temperature pin
-        let mut out: u32 = 0;
-        for _ in 0..10 {
-            out += adc.read_blocking(&mut temp_pin) as u32;
-        }
-        out /= 10;
-
-        if out > 4000 {
-            //no soldering tip is connected
-            int_diff = 0.;
-            old_diff = 0.;
-        } else {
-            //convert to right temperature
-            //let act_temp: f32 =p_at_100c as f32 * 300. * (out as f32 - 1.) / (p_at_400c as f32 - 1.) + 100.;
-
-            //(PID)
-
-            //proportional
-            let diff: f32 = set_temp as f32 - act_temp;
-
-            let pro_diff = diff * kp;
-            //integral
-            int_diff += diff * ki;
-            //derivative
-            let der_diff = (diff - old_diff) * kd;
-            old_diff = diff;
-
-            //adjust output duty cycle
-            let duty_cycle: u16 = ((pro_diff + int_diff + der_diff) as u16).clamp(0, 16384);
-
-            solder_pin.set_duty_hw(duty_cycle as u32);
-
-            info!(
-                "act_temp: {}, set_temp: {}, duty_cycle: {}",
-                act_temp, set_temp, duty_cycle
-            );
-            info!("pro: {}, int: {}, der: {}", pro_diff, int_diff, der_diff);
-
-            //simulation
-            act_temp += 0.5 * old_duty as f32 - 5.;
-            old_duty = duty_cycle;
-
-            //would be really cool to have a visualisation of the PID stuff on the screen.
-        }
-
-        //let delay = Delay::new();
-        //delay.delay_millis(50);
-    }
 }
