@@ -4,39 +4,6 @@
 
 #define MPU_INTERRUPT_PIN A7
 
-volatile bool toggler = false;
-volatile bool magnet = false;
-ISR(INT0_vect) {
-    //only motion detection is active, so no need to check what interrupt has occurred
-    /*
-    i2cMpu.beginTransmission(0x4C);
-    i2cMpu.write(0x13);
-    i2cMpu.endTransmission();
-    i2cMpu.requestFrom(0x4C, 1);
-    //while (!i2cMpu.available() && (millis() - currentTime < 100));
-        //timeout after 100ms
-    while(i2cMpu.available()){
-        if (i2cMpu.read() & 0x04) {
-        //Motion detected
-        }
-    }
-    */
-    toggler = HIGH;
-}
-
-ISR(PCINT0_vect){
-
-    magnet = !digitalRead(PIN_PA3);
-
-}
-
-/*
-//interrupt not wired (meant for communication)
-ISR(PCINT1_vect){
-  
-}
-*/
-
 class I2C {
     private:
     const uint8_t sda, scl, delay_us;
@@ -166,10 +133,130 @@ class I2C {
         return prev_state;
     }
 };
+  I2C TinyWireM(PIN_PA6, PIN_PA4,1);
+
+volatile bool gyro_flag = false;
+volatile bool magnet_flag = false;
+volatile bool esp_flag = false;
+ISR(INT0_vect) {
+    gyro_flag = HIGH;
+}
+
+ISR(PCINT0_vect){
+    magnet_flag = !digitalRead(PIN_PA3);
+}
+
+//interrupt not wired (meant for communication)
+ISR(PCINT1_vect){
+    esp_flag = true;
+}
+
+void setup(){
+    cli(); //disable interrupts
+
+    //wait for stability
+    delay(10);
+
+    //set up gyro
+  while (mpuInitMVDT()){
+      delay(10);
+  }
+  //setup interrupt
+  pinMode(PIN_PA3, INPUT_PULLUP); //RMT
+  pinMode(PIN_PB2, INPUT_PULLUP); //INT_Gyro
+  MCUCR|=_BV(ISC01); //falling edge trigger
+  GIMSK=_BV(PCIE0)| _BV(INT0); //mask pin change interrupt 0, Gyro
+  PCMSK0=_BV(PCINT3); //set interrupt 3, pin PA3, RMT
+  PCMSK1=_BV(PCINT8); //set interrupt 8, pin PB0, uC_n
+
+  //i2c lines
+  pinMode(PIN_PA4, OUTPUT);
+  pinMode(PIN_PA6, OUTPUT);
+
+    sei(); //enable interrupts
+}
+
+void loop(){
+  delay(1);
+  if (esp_flag == HIGH) {
+
+    //read shake sensi
+    uint16_t shake_threshold = 0x00;//0x4f00;
+
+    //this is not synchronised --> UGLY! think of something new! maybe sync first bit with interrupt pos edge
+    for(uint8_t i = 15; i>=0; i--){
+      shake_threshold |= (1 & digitalRead(A5)) << i;
+      delayMicroseconds(500);
+    }
+
+    //overwrite for testing
+    //shake_threshold = 0x4f00;
+
+  //set to standby
+  TinyWireM.beginTransmission(0x4C);
+  TinyWireM.write(0x07);
+  TinyWireM.write(0x00);
+  TinyWireM.endTransmission();
+  //set Anymotion Threshold 
+  TinyWireM.beginTransmission(0x4C);
+  TinyWireM.write(0x43);
+  //15 bit threshold
+  TinyWireM.write((uint8_t)(shake_threshold >> 8)); 
+  TinyWireM.write((uint8_t)shake_threshold);
+  TinyWireM.endTransmission();
+  //set to wake (no more register writing from here on)
+  TinyWireM.beginTransmission(0x4C);
+  TinyWireM.write(0x07);
+  TinyWireM.write(0x01);
+  TinyWireM.endTransmission();
+
+  } else if (gyro_flag == HIGH) {
+    gyro_flag = LOW;
+    TinyWireM.beginTransmission(0x4C);
+    TinyWireM.write(0x14);
+    TinyWireM.endTransmission();
+    TinyWireM.requestFrom(0x4C, 1);
+    if (TinyWireM.read() & 0x04) {
+      //Motion detected
+      //deactivate esp interrupt
+      PCMSK1 = 0;
+
+      //set data line low to signal gyro activity
+      digitalWrite(A5, LOW);
+      pinMode(A5, OUTPUT);
+
+      //send esp interrupt
+      digitalWrite(B0, LOW);
+      pinMode(B0, OUTPUT);
+      delayMicroseconds(100);
+      pinMode(B0, INPUT_PULLUP);
+      //reactivate esp interrupt
+      PCMSK1 = _BV(PCINT8);
+
+    }
+  } else if (magnet_flag == HIGH){
+    //magnet change
+    //deactivate esp interrupt
+    PCMSK1 = 0;
+
+    //set data line low to signal magnet activity
+    pinMode(A5, INPUT_PULLUP);
+
+    //send esp interrupt
+    digitalWrite(B0, LOW);
+    pinMode(B0, OUTPUT);
+    delayMicroseconds(100);
+    pinMode(B0, INPUT_PULLUP);
+    //reactivate esp interrupt
+    PCMSK1 = _BV(PCINT8);
+
+  }
+}
+
 
 bool mpuInitMVDT() {
 //create new i2c driver
-  I2C TinyWireM(PIN_PA6, PIN_PA4,1);
+  //I2C TinyWireM(PIN_PA6, PIN_PA4,1);
   TinyWireM.begin();
   delay(1);
   //set to standby
@@ -217,7 +304,7 @@ bool mpuInitMVDT() {
   TinyWireM.beginTransmission(0x4C);
   TinyWireM.write(0x43);
   //15 bit threshold
-  TinyWireM.write(0x4F);
+  TinyWireM.write(0x4F); 
   TinyWireM.write(0x00);
   //debounce
   TinyWireM.write(0x03);
@@ -231,78 +318,4 @@ bool mpuInitMVDT() {
     return true;
 
   return false;
-}
-
-// one wire functions
-/*
-class OneWireSlave {
-    private:
-    const uint8_t pin;
-
-    
-
-    public: 
-    OneWireSlave(uint8_t _pin ): pin(_pin){};
-
-
-};
-*/
-
-void setup(){
-    cli(); //disable interrupts
-    delay(10);
-    //setting up movement sensor
-    
-  while (mpuInitMVDT()){
-      delay(10);
-  }
-  //setup interrupt
-  pinMode(PIN_PA3, INPUT_PULLUP); //RMT
-  pinMode(PIN_PB2, INPUT_PULLUP); //INT_Gyro
-  MCUCR|=_BV(ISC01); //falling edge
-GIMSK=_BV(PCIE0)| _BV(INT0); //mask pin change interrupt 0
-  //GIFR=_BV(PCIF0); // pin change interrupt flag 0
-PCMSK0=_BV(PCINT3); //set interrupt 3, pin PA3
-//PCMSK1=_BV(PCINT10); //set interrupt 10, pin PB2
-
-  //attachInterrupt(MPU_INTERRUPT_PIN, movementDetectionISR, FALLING);
-  pinMode(PIN_PA5, OUTPUT);
-  pinMode(PIN_PA4, OUTPUT);
-  pinMode(PIN_PA6, OUTPUT);
-
-    sei(); //enable interrupts
-}
-
-bool toggle = false;
-void loop(){
-  delay(1);
-  /*
-  bool state = digitalRead(A3);
-  digitalWrite(A5, state);
-  */
-  //toggler = LOW;
-  //digitalWrite(PIN_PA5, !digitalRead(PIN_PB2));
-
-  if (toggler == HIGH) {
-    toggler = LOW;
-  I2C TinyWireM(PIN_PA6, PIN_PA4,1);
-    TinyWireM.beginTransmission(0x4C);
-    TinyWireM.write(0x14);
-    TinyWireM.endTransmission();
-    TinyWireM.requestFrom(0x4C, 1);
-    //while (TinyWireM.available()){
-    //while(i2cMpu.available()){
-        if (TinyWireM.read() & 0x04) {
-        //Motion detected
-        digitalWrite(A5, HIGH);
-        }
-    //}
-        //digitalWrite(A5, HIGH);
-  }
-  else if (magnet == HIGH){
-    digitalWrite(A5, HIGH);
-  }
-  else {
-    digitalWrite(A5, LOW);
-  }
 }
