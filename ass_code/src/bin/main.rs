@@ -9,8 +9,10 @@ use alloc::borrow::ToOwned;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use alloc::{format, vec};
-use ass_code::soldering::Soldering;
+//use ass_code::soldering::Soldering;
 use critical_section::Mutex;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
 use embassy_time::Timer;
 use embedded_graphics::mono_font::ascii::FONT_10X20;
 use embedded_graphics::mono_font::MonoTextStyle;
@@ -45,9 +47,9 @@ use embassy_executor::Spawner;
 use esp_hal_embassy::Executor;
 use static_cell::StaticCell;
 
-use ass_code::{fusb302};
+use ass_code::fusb302;
 use ass_code::ili9341;
-use ass_code::touchbreakout_cap::{self, TouchBreakoutCap, TouchEventFlag};
+use ass_code::touchbreakout_cap::{self, Touch, TouchBreakoutCap, TouchEventFlag};
 use embedded_graphics::{self, Drawable};
 
 static mut APP_CORE_STACK: Stack<8192> = Stack::new();
@@ -197,13 +199,27 @@ async fn main(spawner: Spawner) {
     //solder_task::<ADC1, GpioPin<8>>(temp_pin, adc1, solder_pin);
     //
     let mut flash = FlashStorage::new();
-    let mut soldering = Soldering::new(solder_pin, temp_pin, peripherals.ADC1, peripherals.LEDC, flash);
+    /*
+    let mut soldering = Soldering::new(
+        solder_pin,
+        temp_pin,
+        peripherals.ADC1,
+        peripherals.LEDC,
+        flash,
+    );
+    */
 
     //spawner.spawn(soldering.task());
     let ts_sda = peripherals.GPIO14;
     let ts_scl = peripherals.GPIO13;
     let ts_irq = peripherals.GPIO1;
-    spawner.spawn(handle_touch_events(ts_sda.into(),ts_scl.into(),ts_irq.into(), peripherals.IO_MUX, peripherals.I2C1.into()));
+    spawner.spawn(handle_touch_events(
+        ts_sda.into(),
+        ts_scl.into(),
+        ts_irq.into(),
+        peripherals.IO_MUX,
+        peripherals.I2C1.into(),
+    ));
 
     //touch circles
     let mut balls: Vec<Circle> = vec![];
@@ -221,6 +237,7 @@ async fn main(spawner: Spawner) {
 
     loop {
         time += 1;
+        let t = TOUCH_POINT.wait().await;
         let p1 = t.0.x as i32;
         let p2 = 320i32 - t.0.y as i32;
         if p1 != 0 {
@@ -245,11 +262,18 @@ async fn main(spawner: Spawner) {
     }
 }
 
-
 static IRQ: Mutex<RefCell<Option<Input>>> = Mutex::new(RefCell::new(None));
+static TS_INT_CTRL: Signal<CriticalSectionRawMutex,bool> = Signal::new();
+static TOUCH_POINT: Signal<CriticalSectionRawMutex,(Touch,Option<Touch>)> = Signal::new();
 
 #[embassy_executor::task]
-async fn handle_touch_events(ts_sda: AnyPin, ts_scl: AnyPin, ts_irq: AnyPin, io_mux: IO_MUX, i2c: AnyI2c) {
+async fn handle_touch_events(
+    ts_sda: AnyPin,
+    ts_scl: AnyPin,
+    ts_irq: AnyPin,
+    io_mux: IO_MUX,
+    i2c: AnyI2c,
+) {
     let mut ts = TouchBreakoutCap::new(ts_sda.into(), ts_scl.into(), i2c);
 
     //create interrupt for ts
@@ -260,12 +284,16 @@ async fn handle_touch_events(ts_sda: AnyPin, ts_scl: AnyPin, ts_irq: AnyPin, io_
 
     critical_section::with(|cs| {
         irq_pin.listen(esp_hal::gpio::Event::FallingEdge);
+        IRQ.borrow_ref_mut(cs).replace(irq_pin);
     });
 
-    //use await to be awaken by interrupt?
 
+    //use await to be awaken by interrupt?
     //distinguish type of touch and check if clicked a button in window
+
     loop {
+        //wait for interrupt trigger
+        TS_INT_CTRL.wait().await;
         let t = ts.read_points().unwrap();
 
         let s = match t.0.event_flag {
@@ -275,13 +303,24 @@ async fn handle_touch_events(ts_sda: AnyPin, ts_scl: AnyPin, ts_irq: AnyPin, io_
             TouchEventFlag::NoEvent => "NoEvent",
         };
         esp_println::println!("P1: \tx: {:4}\ty: {:4}\te: {}", t.0.x, t.0.y, s);
+        TOUCH_POINT.signal(t);
         Timer::after_millis(5).await;
     }
 }
 
-
 #[handler]
 #[ram]
 fn ts_handler() {
-
+    critical_section::with(|cs| {
+        let mut button = IRQ.borrow_ref_mut(cs);
+        let Some(button) = button.as_mut() else {
+            // Some other interrupt has occurred
+            // before the button was set up.
+            return;
+        };
+        if button.is_interrupt_set() {
+            TS_INT_CTRL.signal(true);
+            //button.unlisten();
+        }
+    });
 }
