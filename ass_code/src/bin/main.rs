@@ -26,6 +26,7 @@ use esp_hal::cpu_control::{CpuControl, Stack};
 use esp_hal::delay::Delay;
 use esp_hal::gpio::interconnect::PeripheralOutput;
 use esp_hal::gpio::{AnalogPin, AnyPin, GpioPin, Input, Io, Level, Output};
+use esp_hal::i2c::master::AnyI2c;
 use esp_hal::interrupt::InterruptConfigurable;
 use esp_hal::ledc::channel::{self, Channel, ChannelHW, ChannelIFace};
 use esp_hal::ledc::timer::{self, TimerIFace};
@@ -44,7 +45,7 @@ use embassy_executor::Spawner;
 use esp_hal_embassy::Executor;
 use static_cell::StaticCell;
 
-use ass_code::{fusb302, soldering};
+use ass_code::{fusb302};
 use ass_code::ili9341;
 use ass_code::touchbreakout_cap::{self, TouchBreakoutCap, TouchEventFlag};
 use embedded_graphics::{self, Drawable};
@@ -202,7 +203,7 @@ async fn main(spawner: Spawner) {
     let ts_sda = peripherals.GPIO14;
     let ts_scl = peripherals.GPIO13;
     let ts_irq = peripherals.GPIO1;
-    spawner.spawn(handle_touch_events(ts_sda.into(),ts_scl.into(),ts_irq.into(), peripherals.IO_MUX, peripherals.I2C1));
+    spawner.spawn(handle_touch_events(ts_sda.into(),ts_scl.into(),ts_irq.into(), peripherals.IO_MUX, peripherals.I2C1.into()));
 
     //touch circles
     let mut balls: Vec<Circle> = vec![];
@@ -248,8 +249,8 @@ async fn main(spawner: Spawner) {
 static IRQ: Mutex<RefCell<Option<Input>>> = Mutex::new(RefCell::new(None));
 
 #[embassy_executor::task]
-async fn handle_touch_events(ts_sda: AnyPin, ts_scl: AnyPin, ts_irq: AnyPin, io_mux: IO_MUX, i2c1: I2C1) {
-    let mut ts = TouchBreakoutCap::new(ts_sda.into(), ts_scl.into(), i2c1);
+async fn handle_touch_events(ts_sda: AnyPin, ts_scl: AnyPin, ts_irq: AnyPin, io_mux: IO_MUX, i2c: AnyI2c) {
+    let mut ts = TouchBreakoutCap::new(ts_sda.into(), ts_scl.into(), i2c);
 
     //create interrupt for ts
     let mut io = Io::new(io_mux);
