@@ -1,43 +1,65 @@
-use esp_hal::{analog::adc::{self, Adc, AdcChannel, AdcConfig, AdcPin}, gpio::{AnalogPin, AnyPin, OutputPin}, ledc::{channel::{self, Channel, ChannelHW, ChannelIFace}, timer::{self, Number, TimerIFace}, LSGlobalClkSource, Ledc, LowSpeed}, peripheral::Peripheral, peripherals::{ADC1, LEDC}};
-use esp_storage::FlashStorage;
+use embassy_time::Timer;
 use embedded_storage::{ReadStorage, Storage};
-use log::info;
+use esp_hal::gpio::GpioPin;
 use esp_hal::time::RateExtU32;
+use esp_hal::{
+    analog::adc::{self, Adc, AdcChannel, AdcConfig, AdcPin},
+    gpio::{AnalogPin, AnyPin, OutputPin},
+    ledc::{
+        channel::{self, Channel, ChannelHW, ChannelIFace},
+        timer::{self, Number, TimerIFace},
+        LSGlobalClkSource, Ledc, LowSpeed,
+    },
+    peripheral::Peripheral,
+    peripherals::{ADC1, LEDC},
+};
+use esp_storage::FlashStorage;
+use heapless::Vec;
+use log::info;
+use ringbuffer::{AllocRingBuffer, RingBuffer};
 
 pub struct Soldering<ADCI>
 where
     ADCI: adc::RegisterAccess + Peripheral,
 {
     solder_pin: AnyPin,
-    tmp_pin: AnyPin,
-    adc_peripheral:ADCI,
+    tmp_pin: GpioPin<8>,
+    adc_peripheral: ADCI,
     ledc_peripheral: LEDC,
 
-    flash: FlashStorage
+    flash: FlashStorage,
 }
 
 impl<ADCI> Soldering<ADCI>
 where
     //ADCI: Peripheral,
-    ADCI: adc::RegisterAccess + Peripheral<P=ADCI>,
+    ADCI: adc::RegisterAccess + Peripheral<P = ADCI>,
 {
-    pub fn new(solder_pin:AnyPin, tmp_pin: AnyPin, adc_peripheral: ADCI, ledc_peripheral: LEDC, flash: FlashStorage) -> Self {
-        Self { solder_pin, tmp_pin, adc_peripheral,ledc_peripheral, flash }
+    pub fn new(
+        solder_pin: AnyPin,
+        tmp_pin: GpioPin<8>,
+        adc_peripheral: ADCI,
+        ledc_peripheral: LEDC,
+        flash: FlashStorage,
+    ) -> Self {
+        Self {
+            solder_pin,
+            tmp_pin,
+            adc_peripheral,
+            ledc_peripheral,
+            flash,
+        }
     }
 }
 
-impl Soldering<ADC1>
-{
-
+impl Soldering<ADC1> {
     pub fn task(self) -> embassy_executor::SpawnToken<impl Sized> {
         solder_task(self)
     }
 }
 
-
 #[embassy_executor::task]
-async fn solder_task( s:Soldering<ADC1>)
-{
+async fn solder_task(s: Soldering<ADC1>) {
     let mut ledc = Ledc::new(s.ledc_peripheral);
     ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
 
@@ -59,13 +81,11 @@ async fn solder_task( s:Soldering<ADC1>)
         })
         .unwrap();
 
-        let mut adc_config = AdcConfig::new();
-        let mut tmp_pin = adc_config.enable_pin(s.tmp_pin, esp_hal::analog::adc::Attenuation::_11dB);
-        let mut adc = Adc::new(s.adc_peripheral, adc_config);
-        
+    let mut adc_config = AdcConfig::new();
+    let mut tmp_pin = adc_config.enable_pin(s.tmp_pin, esp_hal::analog::adc::Attenuation::_11dB);
+    let mut adc = Adc::new(s.adc_peripheral, adc_config);
 
-
-        adc.read_blocking(&mut tmp_pin);
+    adc.read_blocking(&mut tmp_pin);
 
     let set_temp: u16 = 380;
     //to calibrate
@@ -92,60 +112,65 @@ async fn solder_task( s:Soldering<ADC1>)
     let p_at_400c: u16 = ((bytes[2] as u16) << 8) | bytes[3] as u16;
     info!("p @ 100°C: {:5}, p @ 400°C: {:5}", p_at_100c, p_at_400c);
 
+    let mut adc_ring = AllocRingBuffer::<u16>::new(50);
+
     let mut act_temp: f32 = 0.;
     let mut old_duty: u16 = 0;
     loop {
+
+        Timer::after_millis(1).await;
         //turn off voltage for measurement
         solder_pin.set_duty_hw(0);
-        //read adc temperature pin
-        let mut out: u32 = 0;
-        for _ in 0..10 {
-            out += adc.read_blocking(&mut tmp_pin) as u32;
-        }
-        out /= 10;
+        //wait for voltage stabilisation
+        Timer::after_micros(100).await;
 
-        if out > 4000 {
+        //read adc temperature pin with rb
+        for _ in 0..10 {
+            adc_ring.enqueue(adc.read_blocking(&mut tmp_pin));
+        }
+        let avg_adc_val: u16 = adc_ring.iter().sum();
+        let avg_adc_val: u16 = avg_adc_val / adc_ring.len() as u16;
+
+        if avg_adc_val > 4000 {
             //no soldering tip is connected
             int_diff = 0.;
             old_diff = 0.;
-        } else {
-            //convert to right temperature
-            //let act_temp: f32 =p_at_100c as f32 * 300. * (out as f32 - 1.) / (p_at_400c as f32 - 1.) + 100.;
-
-            //(PID)
-
-            //proportional
-            let diff: f32 = set_temp as f32 - act_temp;
-
-            let pro_diff = diff * kp;
-            //integral
-            int_diff += diff * ki;
-            //derivative
-            let der_diff = (diff - old_diff) * kd;
-            old_diff = diff;
-
-            //adjust output duty cycle
-            let duty_cycle: u16 = ((pro_diff + int_diff + der_diff) as u16).clamp(0, 16384);
-
-            solder_pin.set_duty_hw(duty_cycle as u32);
-
-            info!(
-                "act_temp: {}, set_temp: {}, duty_cycle: {}",
-                act_temp, set_temp, duty_cycle
-            );
-            info!("pro: {}, int: {}, der: {}", pro_diff, int_diff, der_diff);
-
-            //simulation
-            act_temp += 0.5 * old_duty as f32 - 5.;
-            old_duty = duty_cycle;
-
-            //would be really cool to have a visualisation of the PID stuff on the screen.
+            continue;
         }
 
+        //convert adc value to celcius
+        //let act_temp: f32 =p_at_100c as f32 * 300. * (out as f32 - 1.) / (p_at_400c as f32 - 1.) + 100.; ?????
+        let act_temp: f32 =
+            300. / (p_at_400c - p_at_100c) as f32 * (avg_adc_val - p_at_100c) as f32 + 100.;
 
+        //(PID)
+        let diff: f32 = set_temp as f32 - act_temp;
+        //proportional
+        let pro_diff = diff * kp;
+        //integral
+        int_diff += diff * ki;
+        //derivative
+        let der_diff = (diff - old_diff) * kd;
+        old_diff = diff;
+
+        //adjust output duty cycle
+        let duty_cycle: u16 = ((pro_diff + int_diff + der_diff) as u16).clamp(0, 16384);
+        //solder_pin.set_duty_hw(duty_cycle as u32);
+
+        info!(
+            "act_temp: {}, set_temp: {}, duty_cycle: {}",
+            act_temp, set_temp, duty_cycle
+        );
+        info!("pro: {}, int: {}, der: {}", pro_diff, int_diff, der_diff);
+
+        //simulation
+        //act_temp += 0.5 * old_duty as f32 - 5.;
+
+        //old_duty = duty_cycle;
+
+        //would be really cool to have a visualisation of the PID stuff with temperature monitoring on the screen.
     }
 }
-
 
 /*
 fn calib_temp_points<ADCI, Pinno>(

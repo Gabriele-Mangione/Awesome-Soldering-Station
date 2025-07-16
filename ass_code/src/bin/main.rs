@@ -9,6 +9,7 @@ use alloc::borrow::ToOwned;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use alloc::{format, vec};
+use ass_code::soldering::Soldering;
 //use ass_code::soldering::Soldering;
 use critical_section::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -144,31 +145,6 @@ async fn main(spawner: Spawner) {
 
     let mut time = 0;
 
-    let mut adc_config = AdcConfig::new();
-    let temp_pin =
-        adc_config.enable_pin(peripherals.GPIO8, esp_hal::analog::adc::Attenuation::_11dB);
-    let adc1 = Adc::new(peripherals.ADC1, adc_config);
-
-    let mut ledc = Ledc::new(peripherals.LEDC);
-    ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
-
-    let mut ledc_timer = ledc.timer::<LowSpeed>(timer::Number::Timer0);
-    ledc_timer
-        .configure(timer::config::Config {
-            duty: timer::config::Duty::Duty14Bit, //0- 16384
-            clock_source: timer::LSClockSource::APBClk,
-            frequency: RateExtU32::Hz(500),
-        })
-        .unwrap();
-
-    let mut solder_pin = ledc.channel(channel::Number::Channel0, peripherals.GPIO9);
-    solder_pin
-        .configure(channel::config::Config {
-            timer: &ledc_timer,
-            duty_pct: 0,
-            pin_config: channel::config::PinConfig::PushPull,
-        })
-        .unwrap();
 
     //developing handle code
     let rxGyro = Input::new(peripherals.GPIO12, esp_hal::gpio::Pull::Down);
@@ -199,17 +175,45 @@ async fn main(spawner: Spawner) {
     //solder_task::<ADC1, GpioPin<8>>(temp_pin, adc1, solder_pin);
     //
     let mut flash = FlashStorage::new();
+
     /*
+    let mut adc_config = AdcConfig::new();
+    let temp_pin =
+        adc_config.enable_pin(peripherals.GPIO8, esp_hal::analog::adc::Attenuation::_11dB);
+    let adc1 = Adc::new(peripherals.ADC1, adc_config);
+
+    let mut ledc = Ledc::new(peripherals.LEDC);
+    ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
+
+    let mut ledc_timer = ledc.timer::<LowSpeed>(timer::Number::Timer0);
+    ledc_timer
+        .configure(timer::config::Config {
+            duty: timer::config::Duty::Duty14Bit, //0- 16384
+            clock_source: timer::LSClockSource::APBClk,
+            frequency: RateExtU32::Hz(500),
+        })
+        .unwrap();
+
+    let mut solder_pin = ledc.channel(channel::Number::Channel0, peripherals.GPIO9);
+    solder_pin
+        .configure(channel::config::Config {
+            timer: &ledc_timer,
+            duty_pct: 0,
+            pin_config: channel::config::PinConfig::PushPull,
+        })
+        .unwrap();
+        */
+
     let mut soldering = Soldering::new(
-        solder_pin,
-        temp_pin,
+        peripherals.GPIO9.into(),
+        peripherals.GPIO8,
         peripherals.ADC1,
         peripherals.LEDC,
         flash,
     );
-    */
 
-    //spawner.spawn(soldering.task());
+    spawner.spawn(soldering.task());
+
     let ts_sda = peripherals.GPIO14;
     let ts_scl = peripherals.GPIO13;
     let ts_irq = peripherals.GPIO1;
