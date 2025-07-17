@@ -128,11 +128,11 @@ async fn main(spawner: Spawner) {
     let mut time = 0;
 
     //developing handle code
+    /*
     let rx_gyro = Input::new(peripherals.GPIO12, esp_hal::gpio::Pull::Down);
     let mut red_style = MonoTextStyle::new(&FONT_10X20, ass_code::MyColor(255, 0));
     red_style.set_background_color(Some(ass_code::MyColor(0, 0)));
 
-    /*
     loop {
         if rxGyro.is_high() {
             time = 500;
