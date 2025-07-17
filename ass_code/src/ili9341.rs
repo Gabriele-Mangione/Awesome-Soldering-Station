@@ -1,16 +1,10 @@
 
 use core::ptr::write_volatile;
 
-use embedded_graphics::mock_display::MockDisplay;
-use embedded_graphics::pixelcolor::raw::ToBytes;
-use embedded_graphics::pixelcolor::{self, BinaryColor, Rgb565};
-use embedded_graphics::prelude::{Dimensions, DrawTarget, IntoStorage, Point, RgbColor, Size};
-use embedded_graphics::primitives::{Primitive, PrimitiveStyle, Rectangle, Triangle};
-use embedded_graphics::{Drawable, Pixel};
+use embedded_graphics::prelude::{Dimensions, DrawTarget, Point, Size};
+use embedded_graphics::primitives::Rectangle;
+use embedded_graphics::Pixel;
 use esp_hal::delay::Delay;
-use esp_hal::gpio::Io;
-use esp_hal::peripheral;
-use esp_hal::twai::Instance;
 
 //esp regs
 const ENABLE1_W1TS_ADDR: *mut u32 = 0x60004030 as *mut u32;
@@ -129,30 +123,11 @@ impl ILI9341 {
 
             last_data: 0,
         };
-
-
-
-        unsafe {
-            for n in [35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 47, 48] {
-                //gpio_reset_pin(n);
-
-                //select gpio function, enable pullup and disable input and output
-            }
-        };
-
-
-        //let gpio = unsafe { esp32s3::Peripherals::steal() }.GPIO;
-
         unsafe {
             write_volatile(ENABLE1_W1TS_ADDR, 0x19FF8);
-        }
-
         //set all pins high
-        unsafe {
             write_volatile(OUT1_W1TS_ADDR, 0x19800);
-        }
         //set cs low
-        unsafe {
             write_volatile(OUT1_W1TC_ADDR, 1 << 15);
         }
 

@@ -1,22 +1,11 @@
-extern crate alloc;
-use alloc::boxed::Box;
-use embedded_graphics::prelude::Point;
-
 use esp_hal::{
-    analog::adc::{Adc, AdcChannel, AdcConfig, AdcPin, RegisterAccess},
-    gpio::{AnalogPin, AnyPin, GpioPin, Input, InputPin, Output, OutputPin},
-    i2c::master::{Config, Error, I2c},
-    peripheral::Peripheral,
-    peripherals::{ADC1, ADC2},
+    gpio::AnyPin,
+    i2c::master::{AnyI2c, Config, Error, I2c},
     Blocking,
 };
 
-use core::{borrow::BorrowMut, char::from_digit, fmt, ptr::write_volatile};
-
-//use crate::adc_monitor_link::*;TouchBreakoutCap
 //TODO:
 //https://www.buydisplay.com/download/ic/FT6206.pdf
-//
 
 const I2C_ADDR:u8 = 0x38;
 
@@ -92,15 +81,12 @@ impl<'a> TouchBreakoutCap<'a> {
     pub fn new(
         sda: AnyPin,
         scl: AnyPin,
-        i2c: impl Peripheral<P = impl esp_hal::i2c::master::Instance> + 'a,
+        i2c: AnyI2c,
     ) -> TouchBreakoutCap<'a> {
         let i2c = I2c::new(i2c, Config::default())
             .unwrap()
             .with_sda(sda)
             .with_scl(scl);
-
-        //setup interrupt
-
         Self { i2c}
     }
 }
@@ -131,10 +117,6 @@ impl TouchBreakoutCap<'_> {
             return Ok((t0, Some(t1)));
         }
         Ok((t0, None))
-    }
-
-    fn setup(&mut self) {
-
     }
 }
 

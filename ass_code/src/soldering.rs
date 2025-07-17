@@ -3,10 +3,10 @@ use embedded_storage::{ReadStorage, Storage};
 use esp_hal::gpio::GpioPin;
 use esp_hal::time::RateExtU32;
 use esp_hal::{
-    analog::adc::{self, Adc, AdcChannel, AdcConfig, AdcPin},
-    gpio::{AnalogPin, AnyPin, OutputPin},
+    analog::adc::{self, Adc, AdcConfig },
+    gpio::AnyPin,
     ledc::{
-        channel::{self, Channel, ChannelHW, ChannelIFace},
+        channel::{self, ChannelHW, ChannelIFace},
         timer::{self, Number, TimerIFace},
         LSGlobalClkSource, Ledc, LowSpeed,
     },
@@ -14,7 +14,6 @@ use esp_hal::{
     peripherals::{ADC1, LEDC},
 };
 use esp_storage::FlashStorage;
-use heapless::Vec;
 use log::info;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 
@@ -114,8 +113,6 @@ async fn solder_task(s: Soldering<ADC1>) {
 
     let mut adc_ring = AllocRingBuffer::<u16>::new(50);
 
-    let mut act_temp: f32 = 0.;
-    let mut old_duty: u16 = 0;
     loop {
 
         Timer::after_millis(1).await;

@@ -1,8 +1,5 @@
 extern crate alloc;
-use alloc::{
-    boxed::Box,
-    vec::{self, Vec},
-};
+use alloc::vec::Vec;
 use esp_hal::{
     delay::Delay,
     gpio::AnyPin,

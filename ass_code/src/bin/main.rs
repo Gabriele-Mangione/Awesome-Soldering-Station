@@ -3,14 +3,11 @@
 
 extern crate alloc;
 use core::cell::RefCell;
-use core::ptr::addr_of_mut;
 
 use alloc::borrow::ToOwned;
-use alloc::string::{String, ToString};
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use alloc::{format, vec};
-use ass_code::soldering::Soldering;
-//use ass_code::soldering::Soldering;
 use critical_section::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
@@ -23,37 +20,23 @@ use embedded_graphics::primitives::{Circle, Primitive, Rectangle};
 use embedded_graphics::text::renderer::CharacterStyle;
 use embedded_graphics::text::Text;
 use esp_backtrace as _;
-use esp_hal::analog::adc::{self, Adc, AdcChannel, AdcConfig, AdcPin};
 use esp_hal::clock::CpuClock;
-use esp_hal::cpu_control::{CpuControl, Stack};
-use esp_hal::delay::Delay;
-use esp_hal::gpio::interconnect::PeripheralOutput;
-use esp_hal::gpio::{AnalogPin, AnyPin, GpioPin, Input, Io, Level, Output};
+use esp_hal::gpio::{AnyPin, Input, Io, Level, Output};
 use esp_hal::i2c::master::AnyI2c;
 use esp_hal::interrupt::InterruptConfigurable;
-use esp_hal::ledc::channel::{self, Channel, ChannelHW, ChannelIFace};
-use esp_hal::ledc::timer::{self, TimerIFace};
-use esp_hal::ledc::{self, LSGlobalClkSource, Ledc, LowSpeed};
-use esp_hal::peripheral::Peripheral;
-use esp_hal::peripherals::{ADC1, I2C1, IO_MUX, LEDC};
-use esp_hal::time::RateExtU32;
+use esp_hal::peripherals::IO_MUX;
 use esp_hal::timer::timg::TimerGroup;
-use esp_hal::{handler, main, peripherals, ram};
+use esp_hal::{handler,  ram};
 use esp_storage::FlashStorage;
-use log::info;
-
-use embedded_storage::{ReadStorage, Storage};
-//use esp_storage::FlashStorage;
 use embassy_executor::Spawner;
-use esp_hal_embassy::Executor;
-use static_cell::StaticCell;
 
+use ass_code::soldering::Soldering;
 use ass_code::fusb302;
 use ass_code::ili9341;
-use ass_code::touchbreakout_cap::{self, Touch, TouchBreakoutCap, TouchEventFlag};
+use ass_code::touchbreakout_cap::{Touch, TouchBreakoutCap, TouchEventFlag};
 use embedded_graphics::{self, Drawable};
 
-static mut APP_CORE_STACK: Stack<8192> = Stack::new();
+//static mut APP_CORE_STACK: Stack<8192> = Stack::new();
 
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) {
@@ -108,7 +91,7 @@ async fn main(spawner: Spawner) {
     Output::new(peripherals.GPIO48, Level::Low);
 
     //init screen
-    let mut screen = ass_code::ili9341::ILI9341::new();
+    let mut screen = ili9341::ILI9341::new();
 
     let mut style = MonoTextStyle::new(&FONT_10X20, ass_code::MyColor(255, 255));
     style.set_background_color(Some(ass_code::MyColor(0, 0)));
@@ -136,7 +119,6 @@ async fn main(spawner: Spawner) {
             .draw(&mut screen)
             .unwrap();
     }
-
     log::info!("init touch!");
 
     Text::new("This is a text", Point::new(50, 50), style)
@@ -145,9 +127,8 @@ async fn main(spawner: Spawner) {
 
     let mut time = 0;
 
-
     //developing handle code
-    let rxGyro = Input::new(peripherals.GPIO12, esp_hal::gpio::Pull::Down);
+    let rx_gyro = Input::new(peripherals.GPIO12, esp_hal::gpio::Pull::Down);
     let mut red_style = MonoTextStyle::new(&FONT_10X20, ass_code::MyColor(255, 0));
     red_style.set_background_color(Some(ass_code::MyColor(0, 0)));
 
@@ -172,39 +153,8 @@ async fn main(spawner: Spawner) {
     }
     */
 
-    //solder_task::<ADC1, GpioPin<8>>(temp_pin, adc1, solder_pin);
-    //
-    let mut flash = FlashStorage::new();
-
-    /*
-    let mut adc_config = AdcConfig::new();
-    let temp_pin =
-        adc_config.enable_pin(peripherals.GPIO8, esp_hal::analog::adc::Attenuation::_11dB);
-    let adc1 = Adc::new(peripherals.ADC1, adc_config);
-
-    let mut ledc = Ledc::new(peripherals.LEDC);
-    ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
-
-    let mut ledc_timer = ledc.timer::<LowSpeed>(timer::Number::Timer0);
-    ledc_timer
-        .configure(timer::config::Config {
-            duty: timer::config::Duty::Duty14Bit, //0- 16384
-            clock_source: timer::LSClockSource::APBClk,
-            frequency: RateExtU32::Hz(500),
-        })
-        .unwrap();
-
-    let mut solder_pin = ledc.channel(channel::Number::Channel0, peripherals.GPIO9);
-    solder_pin
-        .configure(channel::config::Config {
-            timer: &ledc_timer,
-            duty_pct: 0,
-            pin_config: channel::config::PinConfig::PushPull,
-        })
-        .unwrap();
-        */
-
-    let mut soldering = Soldering::new(
+    let flash = FlashStorage::new();
+    let soldering = Soldering::new(
         peripherals.GPIO9.into(),
         peripherals.GPIO8,
         peripherals.ADC1,
@@ -212,7 +162,7 @@ async fn main(spawner: Spawner) {
         flash,
     );
 
-    spawner.spawn(soldering.task());
+    spawner.spawn(soldering.task()).unwrap();
 
     let ts_sda = peripherals.GPIO14;
     let ts_scl = peripherals.GPIO13;
@@ -223,7 +173,7 @@ async fn main(spawner: Spawner) {
         ts_irq.into(),
         peripherals.IO_MUX,
         peripherals.I2C1.into(),
-    ));
+    )).unwrap();
 
     //touch circles
     let mut balls: Vec<Circle> = vec![];

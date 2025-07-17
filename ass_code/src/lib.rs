@@ -1,6 +1,7 @@
 #![no_std]
+#![allow(dead_code)]
 
-use embedded_graphics::{prelude::{PixelColor, RawData}, pixelcolor::raw::RawU16};
+use embedded_graphics::{prelude::PixelColor, pixelcolor::raw::RawU16};
 
 
 pub mod soldering;
