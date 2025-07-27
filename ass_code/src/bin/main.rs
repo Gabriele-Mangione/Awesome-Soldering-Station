@@ -9,6 +9,7 @@ use alloc::string::ToString;
 use alloc::vec::Vec;
 use alloc::{format, vec};
 use critical_section::Mutex;
+use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use embassy_time::Timer;
@@ -26,15 +27,15 @@ use esp_hal::i2c::master::AnyI2c;
 use esp_hal::interrupt::InterruptConfigurable;
 use esp_hal::peripherals::IO_MUX;
 use esp_hal::timer::timg::TimerGroup;
-use esp_hal::{handler,  ram};
+use esp_hal::{handler, ram};
 use esp_storage::FlashStorage;
-use embassy_executor::Spawner;
 
-use ass_code::soldering::Soldering;
 use ass_code::fusb302;
 use ass_code::ili9341;
+use ass_code::soldering::Soldering;
 use ass_code::touchbreakout_cap::{Touch, TouchBreakoutCap, TouchEventFlag};
 use embedded_graphics::{self, Drawable};
+use ringbuffer::{AllocRingBuffer, ConstGenericRingBuffer, RingBuffer};
 
 //static mut APP_CORE_STACK: Stack<8192> = Stack::new();
 
@@ -47,34 +48,31 @@ async fn main(spawner: Spawner) {
 
     esp_alloc::heap_allocator!(72 * 1024);
 
+    let timg0 = TimerGroup::new(peripherals.TIMG0);
+    esp_hal_embassy::init(timg0.timer0);
+
     // init fusb, select 9 volt
     let pdo_vec: Vec<fusb302::PDO>;
 
     let mut pdo_requested = false;
-    {
-        log::info!("init fusb!");
-        let mut fusb = fusb302::Fusb::new(
-            peripherals.GPIO5.into(),
-            peripherals.GPIO4.into(),
-            peripherals.I2C0,
-            0x22,
-        );
-        log::info!("scan pds!");
-        pdo_vec = fusb.scan_pds().unwrap();
-        log::info!("request pdo!");
-        if pdo_vec.len() > 0 {
-            let found_pdo = pdo_vec.iter().find(|&&x| x.voltage == 9000);
-            if found_pdo.is_some() {
-                fusb.request_pdo(*found_pdo.unwrap(), 3000, 3000).unwrap();
-                pdo_requested = true;
-            }
+    log::info!("init fusb!");
+    let mut fusb = fusb302::Fusb::new(
+        peripherals.GPIO5.into(),
+        peripherals.GPIO4.into(),
+        peripherals.I2C0,
+        0x22,
+    );
+    log::info!("scan pds!");
+    pdo_vec = fusb.scan_pds().await.unwrap();
+    log::info!("request pdo!");
+    if pdo_vec.len() > 0 {
+        let found_pdo = pdo_vec.iter().find(|&&x| x.voltage == 9000);
+        if found_pdo.is_some() {
+            fusb.request_pdo(*found_pdo.unwrap(), 3000, 3000).unwrap();
+            pdo_requested = true;
         }
-        log::info!("done");
     }
-
-    let timg0 = TimerGroup::new(peripherals.TIMG0);
-    esp_hal_embassy::init(timg0.timer0);
-    //let delay = Delay::new();
+    log::info!("done");
 
     //for some reason necessary when using reg write for pins. DON'T DELETE
     Output::new(peripherals.GPIO35, Level::Low);
@@ -167,16 +165,18 @@ async fn main(spawner: Spawner) {
     let ts_sda = peripherals.GPIO14;
     let ts_scl = peripherals.GPIO13;
     let ts_irq = peripherals.GPIO1;
-    spawner.spawn(handle_touch_events(
-        ts_sda.into(),
-        ts_scl.into(),
-        ts_irq.into(),
-        peripherals.IO_MUX,
-        peripherals.I2C1.into(),
-    )).unwrap();
+    spawner
+        .spawn(handle_touch_events(
+            ts_sda.into(),
+            ts_scl.into(),
+            ts_irq.into(),
+            peripherals.IO_MUX,
+            peripherals.I2C1.into(),
+        ))
+        .unwrap();
 
     //touch circles
-    let mut balls: Vec<Circle> = vec![];
+    //let mut balls: Vec<Circle> = vec![];
     let mut styles = vec![];
     styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0xF8, 0)));
     styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0xE0, 0)));
@@ -189,24 +189,28 @@ async fn main(spawner: Spawner) {
     styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x30, 0)));
     styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x10, 0)));
 
+    let mut rb = ConstGenericRingBuffer::<Circle, 10>::new();
+
     loop {
         time += 1;
         let t = TOUCH_POINT.wait().await;
         let p1 = t.0.x as i32;
         let p2 = 320i32 - t.0.y as i32;
         if p1 != 0 {
-            let ball = Circle::new(Point::new(p2 - 5, p1 - 5), 5u32);
+            rb.enqueue(Circle::new(Point::new(p2 - 5, p1 - 5), 5u32));
+            let mut rbi = rb.clone().into_iter();
+            for i in (0..rb.len()).rev() {
+                rbi.nth(0).unwrap().into_styled(styles[i]).draw(&mut screen).unwrap();
+            }
+                /*
             balls.insert(0, ball);
             if balls.len() > 10 {
                 balls.pop();
             }
-            let mut i: usize = balls.len() - 1;
-            let mut rev_balls = balls.clone();
-            rev_balls.reverse();
-            for b in rev_balls {
-                b.into_styled(styles[i]).draw(&mut screen).unwrap();
-                i -= 1;
+            for i in (0..balls.len()).rev() {
+                balls.get(i).unwrap().into_styled(styles[i]).draw(&mut screen).unwrap();
             }
+                */
         }
         let str = "This is a text ".to_owned() + &time.to_string();
         Text::new(&str, Point::new(50, 50), style)
@@ -217,8 +221,8 @@ async fn main(spawner: Spawner) {
 }
 
 static IRQ: Mutex<RefCell<Option<Input>>> = Mutex::new(RefCell::new(None));
-static TS_INT_CTRL: Signal<CriticalSectionRawMutex,bool> = Signal::new();
-static TOUCH_POINT: Signal<CriticalSectionRawMutex,(Touch,Option<Touch>)> = Signal::new();
+static TS_INT_CTRL: Signal<CriticalSectionRawMutex, bool> = Signal::new();
+static TOUCH_POINT: Signal<CriticalSectionRawMutex, (Touch, Option<Touch>)> = Signal::new();
 
 #[embassy_executor::task]
 async fn handle_touch_events(
@@ -231,23 +235,27 @@ async fn handle_touch_events(
     let mut ts = TouchBreakoutCap::new(ts_sda.into(), ts_scl.into(), i2c);
 
     //create interrupt for ts
+    /*
     let mut io = Io::new(io_mux);
     io.set_interrupt_handler(ts_handler);
+    */
 
     let mut irq_pin = Input::new(ts_irq, esp_hal::gpio::Pull::Up);
 
+    /*
     critical_section::with(|cs| {
         irq_pin.listen(esp_hal::gpio::Event::FallingEdge);
         IRQ.borrow_ref_mut(cs).replace(irq_pin);
     });
-
+    */
 
     //use await to be awaken by interrupt?
     //distinguish type of touch and check if clicked a button in window
 
     loop {
         //wait for interrupt trigger
-        TS_INT_CTRL.wait().await;
+        //TS_INT_CTRL.wait().await;
+        irq_pin.wait_for_falling_edge().await;
         let t = ts.read_points().unwrap();
 
         let s = match t.0.event_flag {
@@ -258,9 +266,9 @@ async fn handle_touch_events(
         };
         esp_println::println!("P1: \tx: {:4}\ty: {:4}\te: {}", t.0.x, t.0.y, s);
         TOUCH_POINT.signal(t);
-        Timer::after_millis(5).await;
     }
 }
+/*
 
 #[handler]
 #[ram]
@@ -278,3 +286,4 @@ fn ts_handler() {
         }
     });
 }
+*/

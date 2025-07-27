@@ -15,7 +15,7 @@ use esp_hal::{
 };
 use esp_storage::FlashStorage;
 use log::info;
-use ringbuffer::{AllocRingBuffer, RingBuffer};
+use ringbuffer::{AllocRingBuffer, ConstGenericRingBuffer, RingBuffer};
 
 pub struct Soldering<ADCI>
 where
@@ -111,7 +111,7 @@ async fn solder_task(s: Soldering<ADC1>) {
     let p_at_400c: u16 = ((bytes[2] as u16) << 8) | bytes[3] as u16;
     info!("p @ 100°C: {:5}, p @ 400°C: {:5}", p_at_100c, p_at_400c);
 
-    let mut adc_ring = AllocRingBuffer::<u16>::new(50);
+    let mut adc_ring = ConstGenericRingBuffer::<u16, 64>::new();
 
     loop {
 
@@ -125,8 +125,8 @@ async fn solder_task(s: Soldering<ADC1>) {
         for _ in 0..10 {
             adc_ring.enqueue(adc.read_blocking(&mut tmp_pin));
         }
-        let avg_adc_val: u16 = adc_ring.iter().sum();
-        let avg_adc_val: u16 = avg_adc_val / adc_ring.len() as u16;
+        let avg_adc_val: u32 = adc_ring.iter().map(|&x| x as u32).sum();
+        let avg_adc_val: u16 = (avg_adc_val >> 6) as u16;
 
         if avg_adc_val > 4000 {
             //no soldering tip is connected
@@ -166,6 +166,7 @@ async fn solder_task(s: Soldering<ADC1>) {
         //old_duty = duty_cycle;
 
         //would be really cool to have a visualisation of the PID stuff with temperature monitoring on the screen.
+
     }
 }
 

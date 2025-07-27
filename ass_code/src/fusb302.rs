@@ -1,9 +1,9 @@
 extern crate alloc;
 use alloc::vec::Vec;
+use embassy_time::Timer;
 use esp_hal::{
-    delay::Delay,
     gpio::AnyPin,
-    i2c::master::{Config, I2c, Error},
+    i2c::master::{Config, Error, I2c},
     peripheral::Peripheral,
     Blocking,
 };
@@ -45,10 +45,9 @@ impl<'a> Fusb<'a> {
 }
 
 impl Fusb<'_> {
-    pub fn scan_pds(&mut self) -> Result<Vec<PDO>, Error> {
+    pub async fn scan_pds(&mut self) -> Result<Vec<PDO>, Error> {
         let mut pdo_vec: Vec<PDO> = Vec::new();
 
-        let delay = Delay::new();
         // Reset: SW_RES and PD_RES
         self.write_reg(0x0C, 0x03)?;
         // Power: enable all
@@ -61,12 +60,12 @@ impl Fusb<'_> {
         // now find out CC connection line
         // Switch0: connect adc to cc1
         self.write_reg(0x02, 0x07)?;
-        delay.delay_millis(1);
+        Timer::after_millis(1).await;
         // read Status0
         let cc1lvl = self.read_reg(0x40)? & 0x03;
         // Switch0: connect adc to cc2
         self.write_reg(0x02, 0x0b)?;
-        delay.delay_millis(1);
+        Timer::after_millis(1).await;
         // read Status0
         let cc2lvl = self.read_reg(0x40)? & 0x03;
         if cc2lvl == cc1lvl {
@@ -110,7 +109,7 @@ impl Fusb<'_> {
             self.read_reg(0x3E)?;
             self.read_reg(0x3F)?;
             // wait until reg contains something
-            delay.delay_millis(1);
+            Timer::after_millis(1).await;
             if timeout > 50 {
                 return Ok(pdo_vec);
             }
@@ -140,11 +139,6 @@ impl Fusb<'_> {
             */
         }
 
-        /*
-        if index_pdo == 255 {
-            return Ok(None); //no pdo with selected voltage found
-        }
-        */
         //discard CRC
         let mut crc: [u8; 4] = [0u8; 4];
         self.read_bmc(&mut crc)?;
@@ -153,13 +147,6 @@ impl Fusb<'_> {
         self.write_reg(0x07, 0x04)?;
 
         Ok(pdo_vec)
-
-        /*
-        //select pdo for power
-        self.request_pdo(&index_pdo, current_mA, 3000)?;
-
-        Ok(Some(pdo))
-        */
     }
 
     pub fn request_pdo(
@@ -168,28 +155,34 @@ impl Fusb<'_> {
         current_milliampere: u16,
         max_current_milliampere: u16,
     ) -> Result<(), Error> {
-        let sop_seq: &[u8] = &[0x12, 0x12, 0x12, 0x13, 0x86];
-        let eop_seq: &[u8] = &[0xff, 0x14, 0xfe, 0xa1];
-
-        let mut pdo_seq = [0u8; 6];
 
         let max_current_bits: u16 = max_current_milliampere / 10;
         let current_bits: u16 = current_milliampere / 10;
 
         let message_id: u8 = 0;
-        pdo_seq[0] = 0x82;
-        pdo_seq[1] = 0x10 | ((message_id & 0x07) << 1);
-        pdo_seq[2] = max_current_bits as u8;
-        pdo_seq[3] = ((max_current_bits >> 8) & 0x03) as u8 | ((current_bits << 2) & 0xFC) as u8;
-        pdo_seq[4] = (current_bits >> 6) as u8;
-        pdo_seq[5] = ((pdo.id + 1) << 4) | 0x01;
 
-        let mut v = Vec::new();
-        v.extend_from_slice(sop_seq);
-        v.extend_from_slice(pdo_seq.as_slice());
-        v.extend_from_slice(eop_seq);
+        let bmc: &[u8] = &[
+            //sop
+            0x12,
+            0x12,
+            0x12,
+            0x13,
+            0x86,
+            //content
+            0x82, 
+            0x10 | ((message_id & 0x07) << 1),
+            max_current_bits as u8,
+            ((max_current_bits >> 8) & 0x03) as u8 | ((current_bits << 2) & 0xFC) as u8,
+            (current_bits >> 6) as u8,
+            ((pdo.id + 1) << 4) | 0x01,
+            //eop
+            0xff, 
+            0x14,
+            0xfe,
+            0xa1,
+        ];
 
-        self.write_bmc(v.as_slice())
+        self.write_bmc(bmc)
     }
 
     fn write_reg(&mut self, reg: u8, val: u8) -> Result<(), Error> {
