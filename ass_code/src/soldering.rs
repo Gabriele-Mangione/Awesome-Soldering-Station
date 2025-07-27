@@ -1,9 +1,11 @@
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::channel::{Channel, Sender};
 use embassy_time::Timer;
 use embedded_storage::{ReadStorage, Storage};
 use esp_hal::gpio::GpioPin;
 use esp_hal::time::RateExtU32;
 use esp_hal::{
-    analog::adc::{self, Adc, AdcConfig },
+    analog::adc::{self, Adc, AdcConfig},
     gpio::AnyPin,
     ledc::{
         channel::{self, ChannelHW, ChannelIFace},
@@ -27,6 +29,15 @@ where
     ledc_peripheral: LEDC,
 
     flash: FlashStorage,
+
+    sender: Sender<'static, NoopRawMutex, TempData, 3>,
+}
+
+pub struct TempData {
+    pub temp: f32,
+    pub temp_p: f32,
+    pub temp_i: f32,
+    pub temp_d: f32,
 }
 
 impl<ADCI> Soldering<ADCI>
@@ -40,6 +51,7 @@ where
         adc_peripheral: ADCI,
         ledc_peripheral: LEDC,
         flash: FlashStorage,
+        sender: Sender<'static, NoopRawMutex, TempData, 3>,
     ) -> Self {
         Self {
             solder_pin,
@@ -47,6 +59,7 @@ where
             adc_peripheral,
             ledc_peripheral,
             flash,
+            sender,
         }
     }
 }
@@ -102,9 +115,14 @@ async fn solder_task(s: Soldering<ADC1>) {
     let mut bytes = [0u8; 4];
     let mut flash = FlashStorage::new();
 
-    flash.write(0x9000, &[0x1, 0x2, 0x3, 0x4]).unwrap();
-
     flash.read(0x9000, &mut bytes).unwrap();
+
+    //if flash has never been set, ig new device
+    if bytes[1] == 0 && bytes[0] == 0 {
+        //todo change these values to standard ones
+        flash.write(0x9000, &[0x1, 0x2, 0x3, 0x4]).unwrap();
+        flash.read(0x9000, &mut bytes).unwrap();
+    }
 
     //todo convert 2bytes to u16...
     let p_at_100c: u16 = ((bytes[0] as u16) << 8) | bytes[1] as u16;
@@ -114,7 +132,6 @@ async fn solder_task(s: Soldering<ADC1>) {
     let mut adc_ring = ConstGenericRingBuffer::<u16, 64>::new();
 
     loop {
-
         Timer::after_millis(1).await;
         //turn off voltage for measurement
         solder_pin.set_duty_hw(0);
@@ -128,6 +145,8 @@ async fn solder_task(s: Soldering<ADC1>) {
         let avg_adc_val: u32 = adc_ring.iter().map(|&x| x as u32).sum();
         let avg_adc_val: u16 = (avg_adc_val >> 6) as u16;
 
+        //todo: check if soldering handle is connected f.i. via reading data lines
+
         if avg_adc_val > 4000 {
             //no soldering tip is connected
             int_diff = 0.;
@@ -136,7 +155,6 @@ async fn solder_task(s: Soldering<ADC1>) {
         }
 
         //convert adc value to celcius
-        //let act_temp: f32 =p_at_100c as f32 * 300. * (out as f32 - 1.) / (p_at_400c as f32 - 1.) + 100.; ?????
         let act_temp: f32 =
             300. / (p_at_400c - p_at_100c) as f32 * (avg_adc_val - p_at_100c) as f32 + 100.;
 
@@ -161,12 +179,16 @@ async fn solder_task(s: Soldering<ADC1>) {
         info!("pro: {}, int: {}, der: {}", pro_diff, int_diff, der_diff);
 
         //simulation
-        //act_temp += 0.5 * old_duty as f32 - 5.;
-
-        //old_duty = duty_cycle;
+        //act_temp += 0.01 * duty_cycle as f32;
+        //act_temp -= act_temp / 100.;
 
         //would be really cool to have a visualisation of the PID stuff with temperature monitoring on the screen.
-
+        s.sender.try_send(TempData {
+            temp: act_temp,
+            temp_p: pro_diff,
+            temp_i: int_diff,
+            temp_d: der_diff,
+        });
     }
 }
 

@@ -10,7 +10,8 @@ use alloc::vec::Vec;
 use alloc::{format, vec};
 use critical_section::Mutex;
 use embassy_executor::Spawner;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
+use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
 use embassy_time::Timer;
 use embedded_graphics::mono_font::ascii::FONT_10X20;
@@ -30,10 +31,10 @@ use esp_hal::timer::timg::TimerGroup;
 use esp_hal::{handler, ram};
 use esp_storage::FlashStorage;
 
-use ass_code::fusb302;
 use ass_code::ili9341;
-use ass_code::soldering::Soldering;
+use ass_code::soldering::{Soldering, TempData};
 use ass_code::touchbreakout_cap::{Touch, TouchBreakoutCap, TouchEventFlag};
+use ass_code::{fusb302, soldering};
 use embedded_graphics::{self, Drawable};
 use ringbuffer::{AllocRingBuffer, ConstGenericRingBuffer, RingBuffer};
 
@@ -151,6 +152,9 @@ async fn main(spawner: Spawner) {
     }
     */
 
+    static mut CHAN: Channel<NoopRawMutex, TempData, 3> =
+        Channel::<NoopRawMutex, TempData, 3>::new();
+
     let flash = FlashStorage::new();
     let soldering = Soldering::new(
         peripherals.GPIO9.into(),
@@ -158,6 +162,7 @@ async fn main(spawner: Spawner) {
         peripherals.ADC1,
         peripherals.LEDC,
         flash,
+        unsafe { CHAN.sender() },
     );
 
     spawner.spawn(soldering.task()).unwrap();
@@ -193,29 +198,53 @@ async fn main(spawner: Spawner) {
 
     loop {
         time += 1;
-        let t = TOUCH_POINT.wait().await;
-        let p1 = t.0.x as i32;
-        let p2 = 320i32 - t.0.y as i32;
-        if p1 != 0 {
-            rb.enqueue(Circle::new(Point::new(p2 - 5, p1 - 5), 5u32));
-            let mut rbi = rb.clone().into_iter();
-            for i in (0..rb.len()).rev() {
-                rbi.nth(0).unwrap().into_styled(styles[i]).draw(&mut screen).unwrap();
-            }
+        if TOUCH_POINT.signaled() {
+            let t = TOUCH_POINT.wait().await;
+            let p1 = t.0.x as i32;
+            let p2 = 320i32 - t.0.y as i32;
+            if p1 != 0 {
+                rb.enqueue(Circle::new(Point::new(p2 - 5, p1 - 5), 5u32));
+                let mut rbi = rb.clone().into_iter();
+                for i in (0..rb.len()).rev() {
+                    rbi.nth(0)
+                        .unwrap()
+                        .into_styled(styles[i])
+                        .draw(&mut screen)
+                        .unwrap();
+                }
                 /*
-            balls.insert(0, ball);
-            if balls.len() > 10 {
-                balls.pop();
+                balls.insert(0, ball);
+                if balls.len() > 10 {
+                    balls.pop();
+                }
+                for i in (0..balls.len()).rev() {
+                    balls.get(i).unwrap().into_styled(styles[i]).draw(&mut screen).unwrap();
+                }
+                    */
             }
-            for i in (0..balls.len()).rev() {
-                balls.get(i).unwrap().into_styled(styles[i]).draw(&mut screen).unwrap();
-            }
-                */
         }
+
+        /*
         let str = "This is a text ".to_owned() + &time.to_string();
         Text::new(&str, Point::new(50, 50), style)
             .draw(&mut screen)
             .unwrap();
+        */
+
+        let temp_data: TempData = unsafe { CHAN.receive().await };
+        let temp_str = format!(
+            "t: {:6.2}, p: {:6.2},\ni: {:6.2}, d: {:6.2}",
+            temp_data.temp, temp_data.temp_p, temp_data.temp_i, temp_data.temp_d
+        );
+
+        /*
+        Text::new(&temp_str, Point::new(20, 200), style)
+            .draw(&mut screen)
+            .unwrap();
+        */
+
+        //draw diagram for the temperatures
+
         Timer::after_millis(5).await;
     }
 }
