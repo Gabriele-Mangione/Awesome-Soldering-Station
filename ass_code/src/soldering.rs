@@ -120,9 +120,9 @@ async fn solder_task(s: Soldering<ADC1>) {
     flash.read(0x9000, &mut bytes).unwrap();
 
     //if flash has never been set, ig new device
-    if bytes[1] == 0 && bytes[0] == 0 {
+    if bytes[1] == 0 && bytes[0] == 0 { // == 0xff?
         //todo change these values to standard ones
-        flash.write(0x9000, &[0x1, 0x2, 0x3, 0x4]).unwrap();
+        flash.write(0x9000, &[0x02, 0xC2, 0x0B, 0x08]).unwrap(); //706 at 100° & 2824 at 400°
         flash.read(0x9000, &mut bytes).unwrap();
     }
 
@@ -146,7 +146,8 @@ async fn solder_task(s: Soldering<ADC1>) {
             adc_ring.enqueue(adc.read_blocking(&mut tmp_pin));
         }
         let avg_adc_val: u32 = adc_ring.iter().map(|&x| x as u32).sum();
-        let avg_adc_val: u16 = (avg_adc_val >> 6) as u16;
+        let avg_adc_val: u16 = (avg_adc_val >> 6) as u16; //shifting instead of dividing to
+                                                          //optimise speed
 
         //todo: check if soldering handle is connected f.i. via reading data lines
 
@@ -184,7 +185,6 @@ async fn solder_task(s: Soldering<ADC1>) {
         //act_temp += 0.02 * duty_cycle as f32;
         //act_temp -= act_temp / 50.;
 
-        //would be really cool to have a visualisation of the PID stuff with temperature monitoring on the screen.
         s.sender.try_send(TempData {
             set: set_temp as _,
             temp: act_temp,
