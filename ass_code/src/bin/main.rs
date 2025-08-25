@@ -17,7 +17,7 @@ use embassy_time::Timer;
 use embedded_graphics::mono_font::ascii::FONT_10X20;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::prelude::{Point, Size};
-use embedded_graphics::primitives::PrimitiveStyle;
+use embedded_graphics::primitives::{Line, PrimitiveStyle};
 use embedded_graphics::primitives::{Circle, Primitive, Rectangle};
 use embedded_graphics::text::renderer::CharacterStyle;
 use embedded_graphics::text::Text;
@@ -31,11 +31,11 @@ use esp_hal::timer::timg::TimerGroup;
 use esp_hal::{handler, ram};
 use esp_storage::FlashStorage;
 
-use ass_code::ili9341;
+use ass_code::{ili9341, MyColor};
 use ass_code::soldering::{Soldering, TempData};
 use ass_code::touchbreakout_cap::{Touch, TouchBreakoutCap, TouchEventFlag};
 use ass_code::{fusb302, soldering};
-use embedded_graphics::{self, Drawable};
+use embedded_graphics::{self, Drawable, Pixel};
 use ringbuffer::{AllocRingBuffer, ConstGenericRingBuffer, RingBuffer};
 
 //static mut APP_CORE_STACK: Stack<8192> = Stack::new();
@@ -195,7 +195,10 @@ async fn main(spawner: Spawner) {
     styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x10, 0)));
 
     let mut rb = ConstGenericRingBuffer::<Circle, 10>::new();
+    let mut diagram_data = ConstGenericRingBuffer::<(u8,u8,u8,u8), 276>::new();
 
+            Line::new(Point::new(20,20), Point::new(20,220)).into_styled(PrimitiveStyle::with_stroke(ass_code::MyColor(0xFF, 0xFF), 2)).draw(&mut screen).unwrap();
+            Line::new(Point::new(20,220), Point::new(300,220)).into_styled(PrimitiveStyle::with_stroke(ass_code::MyColor(0xFF, 0xFF), 2)).draw(&mut screen).unwrap();
     loop {
         time += 1;
         if TOUCH_POINT.signaled() {
@@ -237,13 +240,33 @@ async fn main(spawner: Spawner) {
             temp_data.temp, temp_data.temp_p, temp_data.temp_i, temp_data.temp_d
         );
 
-        /*
-        Text::new(&temp_str, Point::new(20, 200), style)
-            .draw(&mut screen)
-            .unwrap();
-        */
+        diagram_data.enqueue((
+                (temp_data.temp * 200./600.) as u8,
+                (temp_data.temp_p * 200./600.) as u8,
+                (temp_data.temp_i * 200./600.) as u8,
+                (temp_data.temp_d * 200./600.) as u8));
 
-        //draw diagram for the temperatures
+    Rectangle::new(Point::new(22, 20), Size::new(diagram_data.len() as _, 200))
+        .into_styled(PrimitiveStyle::with_fill(ass_code::MyColor(0, 0)))
+        .draw(&mut screen)
+        .unwrap();
+
+        let mut data_clone = diagram_data.clone().into_iter();
+        for i in 0..diagram_data.len() {
+            let v = data_clone.nth(0).unwrap();
+        //data_clone.iter().map(|v| {
+            //draw black line at x for every y
+            //Line::new(Point::new(i as i32 +21,0), Point::new(i as i32 +20,240)).into_styled(PrimitiveStyle::with_stroke(ass_code::MyColor(0, 0), 1)).draw(&mut screen).unwrap();
+            //draw the 4 values respectively in a scale (ie 0° to 600°)
+            Pixel(Point::new(i as i32 +22, (218. - temp_data.set * 200./600. ) as _), MyColor::from_rgb(0x0F, 0x1F, 0x0F)).draw(&mut screen).unwrap();
+            Pixel(Point::new(i as i32 +22, (218 -v.0)as _), MyColor::from_rgb(0x1F, 0x3F, 0x1F)).draw(&mut screen).unwrap();
+            Pixel(Point::new(i as i32 +22, (218 -v.1) as _), MyColor::from_rgb(0x1F, 0, 0)).draw(&mut screen).unwrap();
+            Pixel(Point::new(i as i32 +22, (218 -v.2) as _), MyColor::from_rgb(0, 0x3F, 0)).draw(&mut screen).unwrap();
+            Pixel(Point::new(i as i32 +22, (218 -v.3) as _), MyColor::from_rgb(0, 0, 0x1F)).draw(&mut screen).unwrap();
+
+        };
+
+        //draw diagram data at an x coordinate
 
         Timer::after_millis(5).await;
     }

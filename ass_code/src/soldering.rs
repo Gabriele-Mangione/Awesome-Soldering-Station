@@ -33,7 +33,9 @@ where
     sender: Sender<'static, NoopRawMutex, TempData, 3>,
 }
 
+#[derive(Clone)]
 pub struct TempData {
+    pub set: f32,
     pub temp: f32,
     pub temp_p: f32,
     pub temp_i: f32,
@@ -110,7 +112,7 @@ async fn solder_task(s: Soldering<ADC1>) {
     let kd: f32 = 0.5;
     let mut old_diff: f32 = 0.;
     let mut int_diff: f32 = 0.;
-
+    
     //read saved temperature calibration values
     let mut bytes = [0u8; 4];
     let mut flash = FlashStorage::new();
@@ -130,6 +132,7 @@ async fn solder_task(s: Soldering<ADC1>) {
     info!("p @ 100°C: {:5}, p @ 400°C: {:5}", p_at_100c, p_at_400c);
 
     let mut adc_ring = ConstGenericRingBuffer::<u16, 64>::new();
+    //let mut act_temp:f32 = 0.;
 
     loop {
         Timer::after_millis(1).await;
@@ -155,8 +158,7 @@ async fn solder_task(s: Soldering<ADC1>) {
         }
 
         //convert adc value to celcius
-        let act_temp: f32 =
-            300. / (p_at_400c - p_at_100c) as f32 * (avg_adc_val - p_at_100c) as f32 + 100.;
+        let act_temp: f32 = 300. / (p_at_400c - p_at_100c) as f32 * (avg_adc_val - p_at_100c) as f32 + 100.;
 
         //(PID)
         let diff: f32 = set_temp as f32 - act_temp;
@@ -179,11 +181,12 @@ async fn solder_task(s: Soldering<ADC1>) {
         info!("pro: {}, int: {}, der: {}", pro_diff, int_diff, der_diff);
 
         //simulation
-        //act_temp += 0.01 * duty_cycle as f32;
-        //act_temp -= act_temp / 100.;
+        //act_temp += 0.02 * duty_cycle as f32;
+        //act_temp -= act_temp / 50.;
 
         //would be really cool to have a visualisation of the PID stuff with temperature monitoring on the screen.
         s.sender.try_send(TempData {
+            set: set_temp as _,
             temp: act_temp,
             temp_p: pro_diff,
             temp_i: int_diff,

@@ -26,7 +26,7 @@ impl RawData for MyColor {
 */
 
 impl MyColor{
-    fn from_rgb(r: u8, g:u8, b:u8) ->Self {
+    pub fn from_rgb(r: u8, g:u8, b:u8) ->Self {
         Self((r << 3) | (g>> 3), (g << 5) | b)
     }
 }
