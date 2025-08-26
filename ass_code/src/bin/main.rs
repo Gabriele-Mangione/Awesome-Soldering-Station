@@ -13,12 +13,12 @@ use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
 use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
-use embassy_time::Timer;
+use embassy_time::{Duration, Timer, WithTimeout};
 use embedded_graphics::mono_font::ascii::FONT_10X20;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::prelude::{Point, Size};
-use embedded_graphics::primitives::{Line, PrimitiveStyle};
 use embedded_graphics::primitives::{Circle, Primitive, Rectangle};
+use embedded_graphics::primitives::{Line, PrimitiveStyle};
 use embedded_graphics::text::renderer::CharacterStyle;
 use embedded_graphics::text::Text;
 use esp_backtrace as _;
@@ -26,15 +26,16 @@ use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{AnyPin, Input, Io, Level, Output};
 use esp_hal::i2c::master::AnyI2c;
 use esp_hal::interrupt::InterruptConfigurable;
-use esp_hal::peripherals::IO_MUX;
+use esp_hal::peripheral::Peripheral;
+use esp_hal::peripherals::{self, IO_MUX};
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::{handler, ram};
 use esp_storage::FlashStorage;
 
-use ass_code::{ili9341, MyColor};
 use ass_code::soldering::{Soldering, TempData};
 use ass_code::touchbreakout_cap::{Touch, TouchBreakoutCap, TouchEventFlag};
 use ass_code::{fusb302, soldering};
+use ass_code::{ili9341, MyColor};
 use embedded_graphics::{self, Drawable, Pixel};
 use ringbuffer::{AllocRingBuffer, ConstGenericRingBuffer, RingBuffer};
 
@@ -157,8 +158,11 @@ async fn main(spawner: Spawner) {
 
     let flash = FlashStorage::new();
     let soldering = Soldering::new(
+        peripherals.GPIO11.into(),
+        peripherals.GPIO12.into(),
         peripherals.GPIO9.into(),
         peripherals.GPIO8,
+        peripherals.UART0.into(),
         peripherals.ADC1,
         peripherals.LEDC,
         flash,
@@ -195,14 +199,33 @@ async fn main(spawner: Spawner) {
     styles.push(PrimitiveStyle::with_fill(ass_code::MyColor(0x10, 0)));
 
     let mut rb = ConstGenericRingBuffer::<Circle, 10>::new();
-    let mut diagram_data = ConstGenericRingBuffer::<(u8,u8,u8,u8), 276>::new();
+    let mut diagram_data = ConstGenericRingBuffer::<(u8, u8, u8, u8), 276>::new();
 
-            Line::new(Point::new(20,20), Point::new(20,220)).into_styled(PrimitiveStyle::with_stroke(ass_code::MyColor(0xFF, 0xFF), 2)).draw(&mut screen).unwrap();
-            Line::new(Point::new(20,220), Point::new(300,220)).into_styled(PrimitiveStyle::with_stroke(ass_code::MyColor(0xFF, 0xFF), 2)).draw(&mut screen).unwrap();
+    Line::new(Point::new(20, 20), Point::new(20, 220))
+        .into_styled(PrimitiveStyle::with_stroke(
+            ass_code::MyColor(0xFF, 0xFF),
+            2,
+        ))
+        .draw(&mut screen)
+        .unwrap();
+    Line::new(Point::new(20, 220), Point::new(300, 220))
+        .into_styled(PrimitiveStyle::with_stroke(
+            ass_code::MyColor(0xFF, 0xFF),
+            2,
+        ))
+        .draw(&mut screen)
+        .unwrap();
     loop {
         time += 1;
         if TOUCH_POINT.signaled() {
             let t = TOUCH_POINT.wait().await;
+            let s = match t.0.event_flag {
+                TouchEventFlag::Contact => "Contact",
+                TouchEventFlag::LiftUp => "LiftUp",
+                TouchEventFlag::PressDown => "PressDown",
+                TouchEventFlag::NoEvent => "NoEvent",
+            };
+            esp_println::println!("P1: \tx: {:4}\ty: {:4}\te: {}", t.0.x, t.0.y, s);
             let p1 = t.0.x as i32;
             let p2 = 320i32 - t.0.y as i32;
             if p1 != 0 {
@@ -234,37 +257,69 @@ async fn main(spawner: Spawner) {
             .unwrap();
         */
 
-        let temp_data: TempData = unsafe { CHAN.receive().await };
-        let temp_str = format!(
-            "t: {:6.2}, p: {:6.2},\ni: {:6.2}, d: {:6.2}",
-            temp_data.temp, temp_data.temp_p, temp_data.temp_i, temp_data.temp_d
-        );
+        unsafe {
+            CHAN.receive()
+                .with_timeout(Duration::from_millis(100))
+                .await
+                .inspect(|temp_data: &TempData| {
+                    let temp_str = format!(
+                        "t: {:6.2}, p: {:6.2},\ni: {:6.2}, d: {:6.2}",
+                        temp_data.temp, temp_data.temp_p, temp_data.temp_i, temp_data.temp_d
+                    );
 
-        diagram_data.enqueue((
-                (temp_data.temp * 200./600.) as u8,
-                (temp_data.temp_p * 200./600.) as u8,
-                (temp_data.temp_i * 200./600.) as u8,
-                (temp_data.temp_d * 200./600.) as u8));
+                    diagram_data.enqueue((
+                        (temp_data.temp * 200. / 600.) as u8,
+                        (temp_data.temp_p * 200. / 600.) as u8,
+                        (temp_data.temp_i * 200. / 600.) as u8,
+                        (temp_data.temp_d * 200. / 600.) as u8,
+                    ));
 
-    Rectangle::new(Point::new(22, 20), Size::new(diagram_data.len() as _, 200))
-        .into_styled(PrimitiveStyle::with_fill(ass_code::MyColor(0, 0)))
-        .draw(&mut screen)
-        .unwrap();
+                    Rectangle::new(Point::new(22, 20), Size::new(diagram_data.len() as _, 200))
+                        .into_styled(PrimitiveStyle::with_fill(ass_code::MyColor(0, 0)))
+                        .draw(&mut screen)
+                        .unwrap();
 
-        let mut data_clone = diagram_data.clone().into_iter();
-        for i in 0..diagram_data.len() {
-            let v = data_clone.nth(0).unwrap();
-        //data_clone.iter().map(|v| {
-            //draw black line at x for every y
-            //Line::new(Point::new(i as i32 +21,0), Point::new(i as i32 +20,240)).into_styled(PrimitiveStyle::with_stroke(ass_code::MyColor(0, 0), 1)).draw(&mut screen).unwrap();
-            //draw the 4 values respectively in a scale (ie 0° to 600°)
-            Pixel(Point::new(i as i32 +22, (218. - temp_data.set * 200./600. ) as _), MyColor::from_rgb(0x0F, 0x1F, 0x0F)).draw(&mut screen).unwrap();
-            Pixel(Point::new(i as i32 +22, (218 -v.0)as _), MyColor::from_rgb(0x1F, 0x3F, 0x1F)).draw(&mut screen).unwrap();
-            Pixel(Point::new(i as i32 +22, (218 -v.1) as _), MyColor::from_rgb(0x1F, 0, 0)).draw(&mut screen).unwrap();
-            Pixel(Point::new(i as i32 +22, (218 -v.2) as _), MyColor::from_rgb(0, 0x3F, 0)).draw(&mut screen).unwrap();
-            Pixel(Point::new(i as i32 +22, (218 -v.3) as _), MyColor::from_rgb(0, 0, 0x1F)).draw(&mut screen).unwrap();
-
-        };
+                    let mut data_clone = diagram_data.clone().into_iter();
+                    for i in 0..diagram_data.len() {
+                        let v = data_clone.nth(0).unwrap();
+                        //data_clone.iter().map(|v| {
+                        //draw black line at x for every y
+                        //Line::new(Point::new(i as i32 +21,0), Point::new(i as i32 +20,240)).into_styled(PrimitiveStyle::with_stroke(ass_code::MyColor(0, 0), 1)).draw(&mut screen).unwrap();
+                        //draw the 4 values respectively in a scale (ie 0° to 600°)
+                        Pixel(
+                            Point::new(i as i32 + 22, (218. - temp_data.set * 200. / 600.) as _),
+                            MyColor::from_rgb(0x0F, 0x1F, 0x0F),
+                        )
+                        .draw(&mut screen)
+                        .unwrap();
+                        Pixel(
+                            Point::new(i as i32 + 22, (218 - v.0) as _),
+                            MyColor::from_rgb(0x1F, 0x3F, 0x1F),
+                        )
+                        .draw(&mut screen)
+                        .unwrap();
+                        Pixel(
+                            Point::new(i as i32 + 22, (218 - v.1) as _),
+                            MyColor::from_rgb(0x1F, 0, 0),
+                        )
+                        .draw(&mut screen)
+                        .unwrap();
+                        Pixel(
+                            Point::new(i as i32 + 22, (218 - v.2) as _),
+                            MyColor::from_rgb(0, 0x3F, 0),
+                        )
+                        .draw(&mut screen)
+                        .unwrap();
+                        Pixel(
+                            Point::new(i as i32 + 22, (218 - v.3) as _),
+                            MyColor::from_rgb(0, 0, 0x1F),
+                        )
+                        .draw(&mut screen)
+                        .unwrap();
+                    }
+                });
+        }
+        //let temp_data: TempData = unsafe { CHAN.receive().with_timeout(Duration::from_millis(100)).await.inspect(f) };
 
         //draw diagram data at an x coordinate
 
@@ -310,6 +365,7 @@ async fn handle_touch_events(
         irq_pin.wait_for_falling_edge().await;
         let t = ts.read_points().unwrap();
 
+        /*
         let s = match t.0.event_flag {
             TouchEventFlag::Contact => "Contact",
             TouchEventFlag::LiftUp => "LiftUp",
@@ -317,6 +373,7 @@ async fn handle_touch_events(
             TouchEventFlag::NoEvent => "NoEvent",
         };
         esp_println::println!("P1: \tx: {:4}\ty: {:4}\te: {}", t.0.x, t.0.y, s);
+        */
         TOUCH_POINT.signal(t);
     }
 }
