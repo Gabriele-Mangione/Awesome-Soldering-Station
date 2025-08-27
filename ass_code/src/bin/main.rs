@@ -4,8 +4,6 @@
 extern crate alloc;
 use core::cell::RefCell;
 
-use alloc::borrow::ToOwned;
-use alloc::string::ToString;
 use alloc::vec::Vec;
 use alloc::{format, vec};
 use critical_section::Mutex;
@@ -13,7 +11,7 @@ use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
 use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
-use embassy_time::{Duration, Timer, WithTimeout};
+use embassy_time::{Duration, Instant, Timer, WithTimeout};
 use embedded_graphics::mono_font::ascii::FONT_10X20;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::prelude::{Point, Size};
@@ -25,11 +23,8 @@ use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{AnyPin, Input, Io, Level, Output};
 use esp_hal::i2c::master::AnyI2c;
-use esp_hal::interrupt::InterruptConfigurable;
-use esp_hal::peripheral::Peripheral;
 use esp_hal::peripherals::{self, IO_MUX};
 use esp_hal::timer::timg::TimerGroup;
-use esp_hal::{handler, ram};
 use esp_storage::FlashStorage;
 
 use ass_code::soldering::{Soldering, TempData};
@@ -37,7 +32,8 @@ use ass_code::touchbreakout_cap::{Touch, TouchBreakoutCap, TouchEventFlag};
 use ass_code::{fusb302, soldering};
 use ass_code::{ili9341, MyColor};
 use embedded_graphics::{self, Drawable, Pixel};
-use ringbuffer::{AllocRingBuffer, ConstGenericRingBuffer, RingBuffer};
+use log::warn;
+use ringbuffer::{ConstGenericRingBuffer, RingBuffer};
 
 //static mut APP_CORE_STACK: Stack<8192> = Stack::new();
 
@@ -125,13 +121,13 @@ async fn main(spawner: Spawner) {
         .draw(&mut screen)
         .unwrap();
 
-    let mut time = 0;
 
     //developing handle code
     /*
     let rx_gyro = Input::new(peripherals.GPIO12, esp_hal::gpio::Pull::Down);
     let mut red_style = MonoTextStyle::new(&FONT_10X20, ass_code::MyColor(255, 0));
     red_style.set_background_color(Some(ass_code::MyColor(0, 0)));
+    let mut time = 0;
 
     loop {
         if rxGyro.is_high() {
@@ -216,9 +212,8 @@ async fn main(spawner: Spawner) {
         .draw(&mut screen)
         .unwrap();
     loop {
-        time += 1;
-        if TOUCH_POINT.signaled() {
-            let t = TOUCH_POINT.wait().await;
+        if !TOUCH_POINT.is_empty() {
+            let t = TOUCH_POINT.receive().await;
             let s = match t.0.event_flag {
                 TouchEventFlag::Contact => "Contact",
                 TouchEventFlag::LiftUp => "LiftUp",
@@ -238,24 +233,8 @@ async fn main(spawner: Spawner) {
                         .draw(&mut screen)
                         .unwrap();
                 }
-                /*
-                balls.insert(0, ball);
-                if balls.len() > 10 {
-                    balls.pop();
-                }
-                for i in (0..balls.len()).rev() {
-                    balls.get(i).unwrap().into_styled(styles[i]).draw(&mut screen).unwrap();
-                }
-                    */
             }
         }
-
-        /*
-        let str = "This is a text ".to_owned() + &time.to_string();
-        Text::new(&str, Point::new(50, 50), style)
-            .draw(&mut screen)
-            .unwrap();
-        */
 
         unsafe {
             CHAN.receive()
@@ -329,7 +308,8 @@ async fn main(spawner: Spawner) {
 
 static IRQ: Mutex<RefCell<Option<Input>>> = Mutex::new(RefCell::new(None));
 static TS_INT_CTRL: Signal<CriticalSectionRawMutex, bool> = Signal::new();
-static TOUCH_POINT: Signal<CriticalSectionRawMutex, (Touch, Option<Touch>)> = Signal::new();
+//static TOUCH_POINT: Signal<CriticalSectionRawMutex, (Touch, Option<Touch>)> = Signal::new();
+static TOUCH_POINT: Channel<CriticalSectionRawMutex, (Touch, Option<Touch>),10> = Channel::new();
 
 #[embassy_executor::task]
 async fn handle_touch_events(
@@ -356,25 +336,22 @@ async fn handle_touch_events(
     });
     */
 
-    //use await to be awaken by interrupt?
-    //distinguish type of touch and check if clicked a button in window
+    let mut old_time: u64 = 0;
 
     loop {
+
+
         //wait for interrupt trigger
-        //TS_INT_CTRL.wait().await;
-        irq_pin.wait_for_falling_edge().await;
+        //TODO: investigate why... probable cause is thread priority
+        irq_pin.wait_for_falling_edge().await; //this takes too long, ~60ms but should be 16
+        let time_diff =  Instant::now().as_millis() - old_time;
+        old_time = Instant::now().as_millis();
         let t = ts.read_points().unwrap();
 
-        /*
-        let s = match t.0.event_flag {
-            TouchEventFlag::Contact => "Contact",
-            TouchEventFlag::LiftUp => "LiftUp",
-            TouchEventFlag::PressDown => "PressDown",
-            TouchEventFlag::NoEvent => "NoEvent",
-        };
-        esp_println::println!("P1: \tx: {:4}\ty: {:4}\te: {}", t.0.x, t.0.y, s);
-        */
-        TOUCH_POINT.signal(t);
+        if TOUCH_POINT.try_send(t).is_err() {
+            warn!("touch point signal buffer is full! timediff: {}", time_diff);
+        }
+
     }
 }
 /*

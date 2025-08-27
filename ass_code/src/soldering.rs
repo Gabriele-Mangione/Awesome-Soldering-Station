@@ -20,7 +20,7 @@ use esp_hal::{
     peripherals::{ADC1, LEDC},
 };
 use esp_storage::FlashStorage;
-use log::info;
+use log::{debug, info, trace, warn};
 use ringbuffer::{AllocRingBuffer, ConstGenericRingBuffer, RingBuffer};
 
 pub struct Soldering<ADCI>
@@ -122,13 +122,11 @@ async fn solder_task(s: Soldering<ADC1>) {
     .unwrap()
     .with_rx(s.to_uc_n)
     .with_tx(s.to_uc_p);
-    info!("0");
     u.write_char('?').expect("uart write fail");
 
     let mut buf = [0u8; 1];
-    info!("1");
 
-    let mut cable_connected: bool = false;
+    let mut cable_connected: bool = true;
     if u.read_ready().unwrap() {
         if u.read_ready().unwrap() {
             u.read_bytes(&mut buf); //is this blocking???
@@ -176,16 +174,20 @@ async fn solder_task(s: Soldering<ADC1>) {
     loop {
         if cable_connected == false {
             u.write_char('?').expect("uart write fail");
+            info!("sending pulse check");
 
             if u.read_ready().unwrap() {
+                info!("response acquired");
                 u.read_bytes(&mut buf); //is this blocking???
             }
             if buf[0] != b'y' {
-                Timer::after_millis(500).await;
+                info!("response was not 'y'");
+                Timer::after_millis(1000).await;
                 continue;
             }
             //confirmed connection
             cable_connected = true;
+            info!("response was 'y'");
 
             //write gyro settings
             let mut gyro_settings = [0u8; 2];
@@ -244,13 +246,19 @@ async fn solder_task(s: Soldering<ADC1>) {
         //act_temp += 0.02 * duty_cycle as f32;
         //act_temp -= act_temp / 50.;
 
-        s.sender.try_send(TempData {
-            set: set_temp as _,
-            temp: act_temp,
-            temp_p: pro_diff,
-            temp_i: int_diff,
-            temp_d: der_diff,
-        });
+        //using try_send, so that the thread isn't blocked when buffer gets full
+        if s.sender
+            .try_send(TempData {
+                set: set_temp as _,
+                temp: act_temp,
+                temp_p: pro_diff,
+                temp_i: int_diff,
+                temp_d: der_diff,
+            })
+            .is_err()
+        {
+            warn!("sent temperatures error: channel buffer is full");
+        }
     }
 }
 

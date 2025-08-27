@@ -1,8 +1,9 @@
 use esp_hal::{
-    gpio::AnyPin,
-    i2c::master::{AnyI2c, Config, Error, I2c},
-    Blocking,
+    gpio::AnyPin, i2c::master::{AnyI2c, Config, Error, I2c}, time, Blocking
 };
+use log::info;
+use time::RateExtU32;
+
 
 //TODO:
 //https://www.buydisplay.com/download/ic/FT6206.pdf
@@ -83,11 +84,24 @@ impl<'a> TouchBreakoutCap<'a> {
         scl: AnyPin,
         i2c: AnyI2c,
     ) -> TouchBreakoutCap<'a> {
-        let i2c = I2c::new(i2c, Config::default())
+        
+        let i2c = I2c::new(i2c, Config::default().with_frequency(400.kHz()))
             .unwrap()
             .with_sda(sda)
             .with_scl(scl);
-        Self { i2c}
+        Self { i2c }
+
+        /*
+        let mut a = Self { i2c};
+        //these registers of the chip don't do anything...........
+        a.write_reg(CTRL_REG, 0x00).unwrap(); //keep active mode when there is no touching
+        a.write_reg(PERIOD_ACTIVE_REG, 0xFF).unwrap(); //set scan frequency to 10Hz
+        a.write_reg(PERIOD_MONITOR_REG, 0xFF).unwrap(); //set scan frequency to 10Hz
+
+        info!("CTRL_REG: {}, PAR: {}, PMR: {}", a.read_reg(CTRL_REG).unwrap(), a.read_reg(PERIOD_ACTIVE_REG).unwrap(), a.read_reg(PERIOD_MONITOR_REG).unwrap());
+        a
+        */
+
     }
 }
 
