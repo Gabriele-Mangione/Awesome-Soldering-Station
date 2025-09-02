@@ -234,7 +234,7 @@ async fn solder_task(s: Soldering<ADC1>) {
 
         //adjust output duty cycle
         let duty_cycle: u16 = ((pro_diff + int_diff + der_diff) as u16).clamp(0, 16384);
-        solder_pin.set_duty_hw(duty_cycle as u32);
+        //solder_pin.set_duty_hw(duty_cycle as u32);
 
         /*
         info!(

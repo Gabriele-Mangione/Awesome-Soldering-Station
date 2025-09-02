@@ -347,6 +347,12 @@ impl ILI9341 {
             .write_data(0x00)
             .write_data(0x18)
     }
+
+    //see ili9341 doc at Vertical Scrolling Definition (33h)
+    pub fn vertical_scrolling(&mut self, top_fix: u16, height: u16, bot_fix:u16) -> &mut Self {
+
+        todo!("not yet implemented")
+    }
 }
 
 impl ILI9341 {
