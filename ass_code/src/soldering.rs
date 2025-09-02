@@ -174,20 +174,20 @@ async fn solder_task(s: Soldering<ADC1>) {
     loop {
         if cable_connected == false {
             u.write_char('?').expect("uart write fail");
-            info!("sending pulse check");
+            //info!("sending pulse check");
 
             if u.read_ready().unwrap() {
-                info!("response acquired");
+                //info!("response acquired");
                 u.read_bytes(&mut buf); //is this blocking???
             }
             if buf[0] != b'y' {
-                info!("response was not 'y'");
+                //info!("response was not 'y'");
                 Timer::after_millis(1000).await;
                 continue;
             }
             //confirmed connection
             cable_connected = true;
-            info!("response was 'y'");
+            //info!("response was 'y'");
 
             //write gyro settings
             let mut gyro_settings = [0u8; 2];
@@ -234,13 +234,15 @@ async fn solder_task(s: Soldering<ADC1>) {
 
         //adjust output duty cycle
         let duty_cycle: u16 = ((pro_diff + int_diff + der_diff) as u16).clamp(0, 16384);
-        //solder_pin.set_duty_hw(duty_cycle as u32);
+        solder_pin.set_duty_hw(duty_cycle as u32);
 
+        /*
         info!(
             "act_temp: {}, set_temp: {}, duty_cycle: {}",
             act_temp, set_temp, duty_cycle
         );
         info!("pro: {}, int: {}, der: {}", pro_diff, int_diff, der_diff);
+        */
 
         //simulation
         //act_temp += 0.02 * duty_cycle as f32;
@@ -257,7 +259,7 @@ async fn solder_task(s: Soldering<ADC1>) {
             })
             .is_err()
         {
-            warn!("sent temperatures error: channel buffer is full");
+            //warn!("sent temperatures error: channel buffer is full");
         }
     }
 }

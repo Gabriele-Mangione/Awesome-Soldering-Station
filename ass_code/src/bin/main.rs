@@ -211,6 +211,8 @@ async fn main(spawner: Spawner) {
         ))
         .draw(&mut screen)
         .unwrap();
+
+    let mut data_clone = diagram_data.clone().into_iter();
     loop {
         if !TOUCH_POINT.is_empty() {
             let t = TOUCH_POINT.receive().await;
@@ -220,7 +222,8 @@ async fn main(spawner: Spawner) {
                 TouchEventFlag::PressDown => "PressDown",
                 TouchEventFlag::NoEvent => "NoEvent",
             };
-            esp_println::println!("P1: \tx: {:4}\ty: {:4}\te: {}", t.0.x, t.0.y, s);
+            //printing is very slow
+            //esp_println::println!("P1: \tx: {:4}\ty: {:4}\te: {}", t.0.x, t.0.y, s);
             let p1 = t.0.x as i32;
             let p2 = 320i32 - t.0.y as i32;
             if p1 != 0 {
@@ -235,16 +238,68 @@ async fn main(spawner: Spawner) {
                 }
             }
         }
+                    Rectangle::new(Point::new(22, 20), Size::new(diagram_data.len() as _, 200))
+                        .into_styled(PrimitiveStyle::with_fill(ass_code::MyColor(0, 0)))
+                        .draw(&mut screen)
+                        .unwrap();
 
         unsafe {
             CHAN.receive()
-                .with_timeout(Duration::from_millis(100))
+                .with_timeout(Duration::from_millis(1))
                 .await
                 .inspect(|temp_data: &TempData| {
+                    /*
                     let temp_str = format!(
                         "t: {:6.2}, p: {:6.2},\ni: {:6.2}, d: {:6.2}",
                         temp_data.temp, temp_data.temp_p, temp_data.temp_i, temp_data.temp_d
                     );
+                    */
+
+
+                    /*
+                    Rectangle::new(Point::new(22, 20), Size::new(diagram_data.len() as _, 200))
+                        .into_styled(PrimitiveStyle::with_fill(ass_code::MyColor(0, 0)))
+                        .draw(&mut screen)
+                        .unwrap();
+                    */
+
+
+                    //draw old diagram points as black
+                    let mut i = 0;
+                    for d in diagram_data.iter() {
+                        i += 1;
+                        //draw the 4 values respectively in a scale (ie 0° to 600°)
+                        Pixel(
+                            Point::new(i as i32 + 22, (218. - 380. * 200. / 600.) as _),
+                            MyColor::from_rgb(0, 0, 0),
+                        )
+                        .draw(&mut screen)
+                        .unwrap();
+                        Pixel(
+                            Point::new(i as i32 + 22, (218 - d.0) as _),
+                            MyColor::from_rgb(0, 0, 0),
+                        )
+                        .draw(&mut screen)
+                        .unwrap();
+                        Pixel(
+                            Point::new(i as i32 + 22, (218 - d.1) as _),
+                            MyColor::from_rgb(0, 0, 0),
+                        )
+                        .draw(&mut screen)
+                        .unwrap();
+                        Pixel(
+                            Point::new(i as i32 + 22, (218 - d.2) as _),
+                            MyColor::from_rgb(0, 0, 0),
+                        )
+                        .draw(&mut screen)
+                        .unwrap();
+                        Pixel(
+                            Point::new(i as i32 + 22, (218 - d.3) as _),
+                            MyColor::from_rgb(0, 0, 0),
+                        )
+                        .draw(&mut screen)
+                        .unwrap();
+                    }
 
                     diagram_data.enqueue((
                         (temp_data.temp * 200. / 600.) as u8,
@@ -252,15 +307,9 @@ async fn main(spawner: Spawner) {
                         (temp_data.temp_i * 200. / 600.) as u8,
                         (temp_data.temp_d * 200. / 600.) as u8,
                     ));
-
-                    Rectangle::new(Point::new(22, 20), Size::new(diagram_data.len() as _, 200))
-                        .into_styled(PrimitiveStyle::with_fill(ass_code::MyColor(0, 0)))
-                        .draw(&mut screen)
-                        .unwrap();
-
-                    let mut data_clone = diagram_data.clone().into_iter();
-                    for i in 0..diagram_data.len() {
-                        let v = data_clone.nth(0).unwrap();
+                    let mut i = 0;
+                    for d in diagram_data.iter() {
+                        i += 1;
                         //data_clone.iter().map(|v| {
                         //draw black line at x for every y
                         //Line::new(Point::new(i as i32 +21,0), Point::new(i as i32 +20,240)).into_styled(PrimitiveStyle::with_stroke(ass_code::MyColor(0, 0), 1)).draw(&mut screen).unwrap();
@@ -272,25 +321,25 @@ async fn main(spawner: Spawner) {
                         .draw(&mut screen)
                         .unwrap();
                         Pixel(
-                            Point::new(i as i32 + 22, (218 - v.0) as _),
+                            Point::new(i as i32 + 22, (218 - d.0) as _),
                             MyColor::from_rgb(0x1F, 0x3F, 0x1F),
                         )
                         .draw(&mut screen)
                         .unwrap();
                         Pixel(
-                            Point::new(i as i32 + 22, (218 - v.1) as _),
+                            Point::new(i as i32 + 22, (218 - d.1) as _),
                             MyColor::from_rgb(0x1F, 0, 0),
                         )
                         .draw(&mut screen)
                         .unwrap();
                         Pixel(
-                            Point::new(i as i32 + 22, (218 - v.2) as _),
+                            Point::new(i as i32 + 22, (218 - d.2) as _),
                             MyColor::from_rgb(0, 0x3F, 0),
                         )
                         .draw(&mut screen)
                         .unwrap();
                         Pixel(
-                            Point::new(i as i32 + 22, (218 - v.3) as _),
+                            Point::new(i as i32 + 22, (218 - d.3) as _),
                             MyColor::from_rgb(0, 0, 0x1F),
                         )
                         .draw(&mut screen)
@@ -302,7 +351,7 @@ async fn main(spawner: Spawner) {
 
         //draw diagram data at an x coordinate
 
-        Timer::after_millis(5).await;
+        Timer::after_millis(10).await;
     }
 }
 
@@ -337,21 +386,20 @@ async fn handle_touch_events(
     */
 
     let mut old_time: u64 = 0;
+    let mut counter = 0;
 
     loop {
-
-
         //wait for interrupt trigger
-        //TODO: investigate why... probable cause is thread priority
-        irq_pin.wait_for_falling_edge().await; //this takes too long, ~60ms but should be 16
+        irq_pin.wait_for_falling_edge().await;
         let time_diff =  Instant::now().as_millis() - old_time;
         old_time = Instant::now().as_millis();
         let t = ts.read_points().unwrap();
 
         if TOUCH_POINT.try_send(t).is_err() {
-            warn!("touch point signal buffer is full! timediff: {}", time_diff);
+            warn!("touch point signal buffer is full! counter: {}, timediff: {}", counter,time_diff);
+        }else{
+            counter += 1;
         }
-
     }
 }
 /*
