@@ -1,4 +1,3 @@
-
 use core::ptr::write_volatile;
 
 use embedded_graphics::prelude::{Dimensions, DrawTarget, Point, Size};
@@ -125,9 +124,9 @@ impl ILI9341 {
         };
         unsafe {
             write_volatile(ENABLE1_W1TS_ADDR, 0x19FF8);
-        //set all pins high
+            //set all pins high
             write_volatile(OUT1_W1TS_ADDR, 0x19800);
-        //set cs low
+            //set cs low
             write_volatile(OUT1_W1TC_ADDR, 1 << 15);
         }
 
@@ -349,9 +348,48 @@ impl ILI9341 {
     }
 
     //see ili9341 doc at Vertical Scrolling Definition (33h)
-    pub fn vertical_scrolling(&mut self, top_fix: u16, height: u16, bot_fix:u16) -> &mut Self {
+    pub fn vertical_scrolling(
+        &mut self,
+        top_fix: u16,
+        height: u16,
+        bot_fix: u16,
+        left_column: u16,
+        right_column: u16,
+    ) -> &mut Self {
+        //VSCRDEF
+        self.write_command(VERTICAL_SCROLLING_DEFINITION)
+            .write_data((top_fix >> 8) as u8)
+            .write_data(top_fix as u8)
+            .write_data((height >> 8) as u8)
+            .write_data(height as u8)
+            .write_data((bot_fix >> 8) as u8)
+            .write_data(bot_fix as u8);
+        //CASET
+        self.write_command(COLUMN_ADDRESS_SET)
+            .write_data((left_column >> 8) as u8)
+            .write_data(left_column as u8)
+            .write_data((right_column >> 8) as u8)
+            .write_data(right_column as u8);
+        //PASET
+        self.write_command(PAGE_ADDRESS_SET)
+            .write_data(((top_fix + 1) >> 8) as u8)
+            .write_data((top_fix + 1) as u8)
+            .write_data(((bot_fix - 1) >> 8) as u8)
+            .write_data((bot_fix - 1) as u8);
 
-        todo!("not yet implemented")
+        //RAMWR
+        self.write_command(MEMORY_WRITE);
+        //scroll!!
+        //VSCRSADD
+        self.write_command(VERTICAL_SCROLLING_START_ADDRESS)
+            .write_data(0u8)
+            .write_data(1u8)
+    }
+    pub fn scroll( &mut self, scrolling_height :u16) -> &mut Self {
+        //VSCRSADD
+        self.write_command(VERTICAL_SCROLLING_START_ADDRESS)
+            .write_data((scrolling_height >> 8) as u8)
+            .write_data(scrolling_height as u8)
     }
 }
 

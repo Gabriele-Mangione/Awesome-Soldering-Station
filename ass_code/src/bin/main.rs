@@ -121,7 +121,6 @@ async fn main(spawner: Spawner) {
         .draw(&mut screen)
         .unwrap();
 
-
     //developing handle code
     /*
     let rx_gyro = Input::new(peripherals.GPIO12, esp_hal::gpio::Pull::Down);
@@ -212,6 +211,12 @@ async fn main(spawner: Spawner) {
         .draw(&mut screen)
         .unwrap();
 
+        Rectangle::new(Point::new(22, 20), Size::new(diagram_data.len() as _, 200))
+            .into_styled(PrimitiveStyle::with_fill(ass_code::MyColor(0, 0)))
+            .draw(&mut screen)
+            .unwrap();
+
+    let mut dont_repeat_flag = false;
     let mut data_clone = diagram_data.clone().into_iter();
     loop {
         if !TOUCH_POINT.is_empty() {
@@ -238,10 +243,6 @@ async fn main(spawner: Spawner) {
                 }
             }
         }
-                    Rectangle::new(Point::new(22, 20), Size::new(diagram_data.len() as _, 200))
-                        .into_styled(PrimitiveStyle::with_fill(ass_code::MyColor(0, 0)))
-                        .draw(&mut screen)
-                        .unwrap();
 
         unsafe {
             CHAN.receive()
@@ -255,14 +256,12 @@ async fn main(spawner: Spawner) {
                     );
                     */
 
-
                     /*
                     Rectangle::new(Point::new(22, 20), Size::new(diagram_data.len() as _, 200))
                         .into_styled(PrimitiveStyle::with_fill(ass_code::MyColor(0, 0)))
                         .draw(&mut screen)
                         .unwrap();
                     */
-
 
                     //draw old diagram points as black
                     let mut i = 0;
@@ -300,6 +299,16 @@ async fn main(spawner: Spawner) {
                         .draw(&mut screen)
                         .unwrap();
                     }
+                    /*
+                    if diagram_data.len() == 276 {
+                        if dont_repeat_flag == false {
+                            dont_repeat_flag = true;
+                            screen.vertical_scrolling(20, 200, 220, 20, 300);
+                        } else {
+                            screen.scroll(1);
+                        }
+                    }
+                    */
 
                     diagram_data.enqueue((
                         (temp_data.temp * 200. / 600.) as u8,
@@ -358,7 +367,7 @@ async fn main(spawner: Spawner) {
 static IRQ: Mutex<RefCell<Option<Input>>> = Mutex::new(RefCell::new(None));
 static TS_INT_CTRL: Signal<CriticalSectionRawMutex, bool> = Signal::new();
 //static TOUCH_POINT: Signal<CriticalSectionRawMutex, (Touch, Option<Touch>)> = Signal::new();
-static TOUCH_POINT: Channel<CriticalSectionRawMutex, (Touch, Option<Touch>),10> = Channel::new();
+static TOUCH_POINT: Channel<CriticalSectionRawMutex, (Touch, Option<Touch>), 10> = Channel::new();
 
 #[embassy_executor::task]
 async fn handle_touch_events(
@@ -391,13 +400,16 @@ async fn handle_touch_events(
     loop {
         //wait for interrupt trigger
         irq_pin.wait_for_falling_edge().await;
-        let time_diff =  Instant::now().as_millis() - old_time;
+        let time_diff = Instant::now().as_millis() - old_time;
         old_time = Instant::now().as_millis();
         let t = ts.read_points().unwrap();
 
         if TOUCH_POINT.try_send(t).is_err() {
-            warn!("touch point signal buffer is full! counter: {}, timediff: {}", counter,time_diff);
-        }else{
+            warn!(
+                "touch point signal buffer is full! counter: {}, timediff: {}",
+                counter, time_diff
+            );
+        } else {
             counter += 1;
         }
     }
