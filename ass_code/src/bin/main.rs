@@ -211,13 +211,14 @@ async fn main(spawner: Spawner) {
         .draw(&mut screen)
         .unwrap();
 
-        Rectangle::new(Point::new(22, 20), Size::new(diagram_data.len() as _, 200))
-            .into_styled(PrimitiveStyle::with_fill(ass_code::MyColor(0, 0)))
-            .draw(&mut screen)
-            .unwrap();
+    Rectangle::new(Point::new(22, 20), Size::new(diagram_data.len() as _, 200))
+        .into_styled(PrimitiveStyle::with_fill(ass_code::MyColor(0, 0)))
+        .draw(&mut screen)
+        .unwrap();
 
     let mut dont_repeat_flag = false;
     let mut data_clone = diagram_data.clone().into_iter();
+    let mut i: u16 = 0;
     loop {
         if !TOUCH_POINT.is_empty() {
             let t = TOUCH_POINT.receive().await;
@@ -262,12 +263,18 @@ async fn main(spawner: Spawner) {
                         .draw(&mut screen)
                         .unwrap();
                     */
+                    if i == 276 {
+                        i = 0;
+                    } else {
+                        i += 1;
+                    }
 
                     //draw old diagram points as black
-                    let mut i = 0;
-                    for d in diagram_data.iter() {
-                        i += 1;
-                        //draw the 4 values respectively in a scale (ie 0° to 600°)
+                    //NOT WORKING!!
+                    let d = diagram_data.peek();
+                    //draw the 4 values respectively in a scale (ie 0° to 600°)
+                    if d.is_some() {
+                        let d = d.unwrap();
                         Pixel(
                             Point::new(i as i32 + 22, (218. - 380. * 200. / 600.) as _),
                             MyColor::from_rgb(0, 0, 0),
@@ -299,7 +306,8 @@ async fn main(spawner: Spawner) {
                         .draw(&mut screen)
                         .unwrap();
                     }
-                    /*
+
+                    //NOT WORKING!!
                     if diagram_data.len() == 276 {
                         if dont_repeat_flag == false {
                             dont_repeat_flag = true;
@@ -308,7 +316,6 @@ async fn main(spawner: Spawner) {
                             screen.scroll(1);
                         }
                     }
-                    */
 
                     diagram_data.enqueue((
                         (temp_data.temp * 200. / 600.) as u8,
@@ -316,44 +323,41 @@ async fn main(spawner: Spawner) {
                         (temp_data.temp_i * 200. / 600.) as u8,
                         (temp_data.temp_d * 200. / 600.) as u8,
                     ));
-                    let mut i = 0;
-                    for d in diagram_data.iter() {
-                        i += 1;
-                        //data_clone.iter().map(|v| {
-                        //draw black line at x for every y
-                        //Line::new(Point::new(i as i32 +21,0), Point::new(i as i32 +20,240)).into_styled(PrimitiveStyle::with_stroke(ass_code::MyColor(0, 0), 1)).draw(&mut screen).unwrap();
-                        //draw the 4 values respectively in a scale (ie 0° to 600°)
-                        Pixel(
-                            Point::new(i as i32 + 22, (218. - temp_data.set * 200. / 600.) as _),
-                            MyColor::from_rgb(0x0F, 0x1F, 0x0F),
-                        )
-                        .draw(&mut screen)
-                        .unwrap();
-                        Pixel(
-                            Point::new(i as i32 + 22, (218 - d.0) as _),
-                            MyColor::from_rgb(0x1F, 0x3F, 0x1F),
-                        )
-                        .draw(&mut screen)
-                        .unwrap();
-                        Pixel(
-                            Point::new(i as i32 + 22, (218 - d.1) as _),
-                            MyColor::from_rgb(0x1F, 0, 0),
-                        )
-                        .draw(&mut screen)
-                        .unwrap();
-                        Pixel(
-                            Point::new(i as i32 + 22, (218 - d.2) as _),
-                            MyColor::from_rgb(0, 0x3F, 0),
-                        )
-                        .draw(&mut screen)
-                        .unwrap();
-                        Pixel(
-                            Point::new(i as i32 + 22, (218 - d.3) as _),
-                            MyColor::from_rgb(0, 0, 0x1F),
-                        )
-                        .draw(&mut screen)
-                        .unwrap();
-                    }
+                    let d = diagram_data.back().unwrap();
+                    //data_clone.iter().map(|v| {
+                    //draw black line at x for every y
+                    //Line::new(Point::new(i as i32 +21,0), Point::new(i as i32 +20,240)).into_styled(PrimitiveStyle::with_stroke(ass_code::MyColor(0, 0), 1)).draw(&mut screen).unwrap();
+                    //draw the 4 values respectively in a scale (ie 0° to 600°)
+                    Pixel(
+                        Point::new(i as i32 + 22, (218. - temp_data.set * 200. / 600.) as _),
+                        MyColor::from_rgb(0x0F, 0x1F, 0x0F),
+                    )
+                    .draw(&mut screen)
+                    .unwrap();
+                    Pixel(
+                        Point::new(i as i32 + 22, (218 - d.0) as _),
+                        MyColor::from_rgb(0x1F, 0x3F, 0x1F),
+                    )
+                    .draw(&mut screen)
+                    .unwrap();
+                    Pixel(
+                        Point::new(i as i32 + 22, (218 - d.1) as _),
+                        MyColor::from_rgb(0x1F, 0, 0),
+                    )
+                    .draw(&mut screen)
+                    .unwrap();
+                    Pixel(
+                        Point::new(i as i32 + 22, (218 - d.2) as _),
+                        MyColor::from_rgb(0, 0x3F, 0),
+                    )
+                    .draw(&mut screen)
+                    .unwrap();
+                    Pixel(
+                        Point::new(i as i32 + 22, (218 - d.3) as _),
+                        MyColor::from_rgb(0, 0, 0x1F),
+                    )
+                    .draw(&mut screen)
+                    .unwrap();
                 });
         }
         //let temp_data: TempData = unsafe { CHAN.receive().with_timeout(Duration::from_millis(100)).await.inspect(f) };
