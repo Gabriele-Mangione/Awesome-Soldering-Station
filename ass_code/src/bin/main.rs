@@ -15,7 +15,7 @@ use embassy_time::{Duration, Instant, Timer, WithTimeout};
 use embedded_graphics::mono_font::ascii::FONT_10X20;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::prelude::{Point, Size};
-use embedded_graphics::primitives::{Circle, Primitive, Rectangle};
+use embedded_graphics::primitives::{Circle, Primitive, Rectangle, StyledDrawable};
 use embedded_graphics::primitives::{Line, PrimitiveStyle};
 use embedded_graphics::text::renderer::CharacterStyle;
 use embedded_graphics::text::Text;
@@ -217,24 +217,32 @@ async fn main(spawner: Spawner) {
         .unwrap();
 
     let mut dont_repeat_flag = false;
-    let mut data_clone = diagram_data.clone().into_iter();
+    //let mut data_clone = diagram_data.clone().into_iter();
     let mut i: u16 = 0;
     loop {
         if !TOUCH_POINT.is_empty() {
             let t = TOUCH_POINT.receive().await;
+            //printing is very slow
+            /*
             let s = match t.0.event_flag {
                 TouchEventFlag::Contact => "Contact",
                 TouchEventFlag::LiftUp => "LiftUp",
                 TouchEventFlag::PressDown => "PressDown",
                 TouchEventFlag::NoEvent => "NoEvent",
             };
-            //printing is very slow
+            */
             //esp_println::println!("P1: \tx: {:4}\ty: {:4}\te: {}", t.0.x, t.0.y, s);
             let p1 = t.0.x as i32;
             let p2 = 320i32 - t.0.y as i32;
             if p1 != 0 {
                 rb.enqueue(Circle::new(Point::new(p2 - 5, p1 - 5), 5u32));
-                let mut rbi = rb.clone().into_iter();
+                let mut circle_count = 0;
+                for circle in rb.iter(){
+                    circle.draw_styled(&styles[circle_count], &mut screen).unwrap();
+                    circle_count += 1;
+                }
+                /*
+                //let mut rbi = rb.clone().into_iter();
                 for i in (0..rb.len()).rev() {
                     rbi.nth(0)
                         .unwrap()
@@ -242,6 +250,7 @@ async fn main(spawner: Spawner) {
                         .draw(&mut screen)
                         .unwrap();
                 }
+                */
             }
         }
 
