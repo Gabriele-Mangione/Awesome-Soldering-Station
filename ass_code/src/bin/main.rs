@@ -313,7 +313,7 @@ async fn main(spawner: Spawner) {
                             dont_repeat_flag = true;
                             screen.vertical_scrolling(20, 200, 220, 20, 300);
                         } else {
-                            screen.scroll(1);
+                            screen.scroll(i);
                         }
                     }
 
