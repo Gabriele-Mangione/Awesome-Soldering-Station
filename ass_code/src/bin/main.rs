@@ -32,7 +32,7 @@ use ass_code::touchbreakout_cap::{Touch, TouchBreakoutCap, TouchEventFlag};
 use ass_code::{fusb302, soldering};
 use ass_code::{ili9341, MyColor};
 use embedded_graphics::{self, Drawable, Pixel};
-use log::warn;
+use log::{info, warn};
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer};
 
 //static mut APP_CORE_STACK: Stack<8192> = Stack::new();
@@ -236,10 +236,10 @@ async fn main(spawner: Spawner) {
             let p2 = 320i32 - t.0.y as i32;
             if p1 != 0 {
                 rb.enqueue(Circle::new(Point::new(p2 - 5, p1 - 5), 5u32));
-                let mut circle_count = 0;
+                let mut circle_count = rb.len();
                 for circle in rb.iter(){
+                    circle_count -= 1;
                     circle.draw_styled(&styles[circle_count], &mut screen).unwrap();
-                    circle_count += 1;
                 }
                 /*
                 //let mut rbi = rb.clone().into_iter();
@@ -272,7 +272,7 @@ async fn main(spawner: Spawner) {
                         .draw(&mut screen)
                         .unwrap();
                     */
-                    if i == 276 {
+                    if i == 275 {
                         i = 0;
                     } else {
                         i += 1;
@@ -315,7 +315,6 @@ async fn main(spawner: Spawner) {
                         .draw(&mut screen)
                         .unwrap();
                     }
-
                     //NOT WORKING!!
                     if diagram_data.len() == 276 {
                         if dont_repeat_flag == false {
