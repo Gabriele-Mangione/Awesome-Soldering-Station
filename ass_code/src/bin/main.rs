@@ -216,6 +216,9 @@ async fn main(spawner: Spawner) {
         .draw(&mut screen)
         .unwrap();
 
+    //setup vert scrolling
+    screen.vertical_scrolling(20, 300, 20);
+
     let mut dont_repeat_flag = false;
     //let mut data_clone = diagram_data.clone().into_iter();
     let mut i: u16 = 0;
@@ -279,7 +282,6 @@ async fn main(spawner: Spawner) {
                     }
 
                     //draw old diagram points as black
-                    //NOT WORKING!!
                     let d = diagram_data.peek();
                     //draw the 4 values respectively in a scale (ie 0° to 600°)
                     if d.is_some() {
@@ -315,14 +317,13 @@ async fn main(spawner: Spawner) {
                         .draw(&mut screen)
                         .unwrap();
                     }
+
                     //NOT WORKING!!
                     if diagram_data.len() == 276 {
-                        if dont_repeat_flag == false {
-                            dont_repeat_flag = true;
-                            screen.vertical_scrolling(20, 200, 220, 20, 300);
-                        } else {
+                        info!("scroll: {}", i);
                             screen.scroll(i);
-                        }
+                    }else {
+                        info!("i: {}", i);
                     }
 
                     diagram_data.enqueue((

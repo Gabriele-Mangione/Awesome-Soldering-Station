@@ -353,8 +353,6 @@ impl ILI9341 {
         top_fix: u16,
         height: u16,
         bot_fix: u16,
-        left_column: u16,
-        right_column: u16,
     ) -> &mut Self {
         //VSCRDEF
         self.write_command(VERTICAL_SCROLLING_DEFINITION)
@@ -363,7 +361,8 @@ impl ILI9341 {
             .write_data((height >> 8) as u8)
             .write_data(height as u8)
             .write_data((bot_fix >> 8) as u8)
-            .write_data(bot_fix as u8);
+            .write_data(bot_fix as u8)
+        /*
         //CASET
         self.write_command(COLUMN_ADDRESS_SET)
             .write_data((left_column >> 8) as u8)
@@ -384,6 +383,7 @@ impl ILI9341 {
         self.write_command(VERTICAL_SCROLLING_START_ADDRESS)
             .write_data(0u8)
             .write_data(1u8)
+        */
     }
     pub fn scroll( &mut self, scrolling_height :u16) -> &mut Self {
         //VSCRSADD
