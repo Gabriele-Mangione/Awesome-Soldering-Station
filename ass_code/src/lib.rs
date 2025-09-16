@@ -3,11 +3,12 @@
 
 use embedded_graphics::{prelude::PixelColor, pixelcolor::raw::RawU16};
 
-
 pub mod soldering;
 pub mod fusb302;
 pub mod ili9341;
 pub mod touchbreakout_cap;
+pub mod comm;
+
 #[derive(Copy, PartialEq, Clone)]
     //565
 pub struct MyColor(pub u8, pub u8);

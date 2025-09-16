@@ -1,13 +1,16 @@
+use core::cell::RefCell;
 use core::fmt::Write;
 
+use critical_section::Mutex;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::{Channel, Sender};
 use embassy_time::Timer;
 use embedded_io::{Read, ReadReady};
 use embedded_storage::{ReadStorage, Storage};
 use esp_hal::gpio::GpioPin;
+use esp_hal::interrupt::InterruptConfigurable;
 use esp_hal::time::RateExtU32;
-use esp_hal::uart::{self, AnyUart, Uart};
+use esp_hal::uart::{self, AnyUart, AtCmdConfig, Uart, UartInterrupt};
 use esp_hal::{
     analog::adc::{self, Adc, AdcConfig},
     gpio::AnyPin,
@@ -85,6 +88,7 @@ impl Soldering<ADC1> {
     }
 }
 
+
 #[embassy_executor::task]
 async fn solder_task(s: Soldering<ADC1>) {
     let mut ledc = Ledc::new(s.ledc_peripheral);
@@ -113,29 +117,18 @@ async fn solder_task(s: Soldering<ADC1>) {
 
     adc.read_blocking(&mut tmp_pin);
 
-    let mut u = Uart::new(
-        s.uart_peripheral,
-        uart::Config::default()
-            .with_baudrate(9600)
-            .with_rx_timeout(0),
-    )
-    .unwrap()
-    .with_rx(s.to_uc_n)
-    .with_tx(s.to_uc_p);
-    u.write_char('?').expect("uart write fail");
 
-    let mut buf = [0u8; 1];
+    //try to communicate with handle
+    //read response
+    //set cable_connected flag
 
-    let mut cable_connected: bool = true;
-    if u.read_ready().unwrap() {
-        if u.read_ready().unwrap() {
-            u.read_bytes(&mut buf); //is this blocking???
-        }
+    let mut cable_connected: bool = comm::pulse_check();
+    /*
         if buf[0] == b'y' {
             //confirmed connection
             cable_connected = true;
         }
-    }
+        */
 
     let set_temp: u16 = 380;
     //to calibrate
