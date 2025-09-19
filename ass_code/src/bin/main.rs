@@ -3,6 +3,7 @@
 
 extern crate alloc;
 use core::cell::RefCell;
+use core::default;
 
 use alloc::vec::Vec;
 use alloc::{format, vec};
@@ -240,9 +241,11 @@ async fn main(spawner: Spawner) {
             if p1 != 0 {
                 rb.enqueue(Circle::new(Point::new(p2 - 5, p1 - 5), 5u32));
                 let mut circle_count = rb.len();
-                for circle in rb.iter(){
+                for circle in rb.iter() {
                     circle_count -= 1;
-                    circle.draw_styled(&styles[circle_count], &mut screen).unwrap();
+                    circle
+                        .draw_styled(&styles[circle_count], &mut screen)
+                        .unwrap();
                 }
                 /*
                 //let mut rbi = rb.clone().into_iter();
@@ -258,122 +261,121 @@ async fn main(spawner: Spawner) {
         }
 
         unsafe {
-            CHAN.receive()
-                .with_timeout(Duration::from_millis(1))
-                .await
-                .inspect(|temp_data: &TempData| {
-                    /*
-                    let temp_str = format!(
-                        "t: {:6.2}, p: {:6.2},\ni: {:6.2}, d: {:6.2}",
-                        temp_data.temp, temp_data.temp_p, temp_data.temp_i, temp_data.temp_d
-                    );
-                    */
+            if let Ok(temp_data) = CHAN.receive().with_timeout(Duration::from_millis(1)).await {
+                let mut stop_watch = StopWatch::default();
+                /*
+                let temp_str = format!(
+                    "t: {:6.2}, p: {:6.2},\ni: {:6.2}, d: {:6.2}",
+                    temp_data.temp, temp_data.temp_p, temp_data.temp_i, temp_data.temp_d
+                );
+                */
 
-                    /*
-                    Rectangle::new(Point::new(22, 20), Size::new(diagram_data.len() as _, 200))
-                        .into_styled(PrimitiveStyle::with_fill(ass_code::MyColor(0, 0)))
-                        .draw(&mut screen)
-                        .unwrap();
-                    */
-                    if i == 275 {
-                        i = 0;
-                    } else {
-                        i += 1;
-                    }
+                /*
+                Rectangle::new(Point::new(22, 20), Size::new(diagram_data.len() as _, 200))
+                    .into_styled(PrimitiveStyle::with_fill(ass_code::MyColor(0, 0)))
+                    .draw(&mut screen)
+                    .unwrap();
+                */
+                if i == 275 {
+                    i = 0;
+                } else {
+                    i += 1;
+                }
 
-                    //draw old diagram points as black
-                    let d = diagram_data.peek();
-                    //draw the 4 values respectively in a scale (ie 0° to 600°)
-                    if d.is_some() {
-                        let d = d.unwrap();
-                        Pixel(
-                            Point::new(i as i32 + 22, (218. - 380. * 200. / 600.) as _),
-                            MyColor::from_rgb(0, 0, 0),
-                        )
-                        .draw(&mut screen)
-                        .unwrap();
-                        Pixel(
-                            Point::new(i as i32 + 22, (218 - d.0) as _),
-                            MyColor::from_rgb(0, 0, 0),
-                        )
-                        .draw(&mut screen)
-                        .unwrap();
-                        Pixel(
-                            Point::new(i as i32 + 22, (218 - d.1) as _),
-                            MyColor::from_rgb(0, 0, 0),
-                        )
-                        .draw(&mut screen)
-                        .unwrap();
-                        Pixel(
-                            Point::new(i as i32 + 22, (218 - d.2) as _),
-                            MyColor::from_rgb(0, 0, 0),
-                        )
-                        .draw(&mut screen)
-                        .unwrap();
-                        Pixel(
-                            Point::new(i as i32 + 22, (218 - d.3) as _),
-                            MyColor::from_rgb(0, 0, 0),
-                        )
-                        .draw(&mut screen)
-                        .unwrap();
-                    }
-
-                    //NOT WORKING!!
-                    if diagram_data.len() == 276 {
-                        info!("scroll: {}", i);
-                            screen.scroll(i);
-                    }else {
-                        info!("i: {}", i);
-                    }
-
-                    diagram_data.enqueue((
-                        (temp_data.temp * 200. / 600.) as u8,
-                        (temp_data.temp_p * 200. / 600.) as u8,
-                        (temp_data.temp_i * 200. / 600.) as u8,
-                        (temp_data.temp_d * 200. / 600.) as u8,
-                    ));
-                    let d = diagram_data.back().unwrap();
-                    //data_clone.iter().map(|v| {
-                    //draw black line at x for every y
-                    //Line::new(Point::new(i as i32 +21,0), Point::new(i as i32 +20,240)).into_styled(PrimitiveStyle::with_stroke(ass_code::MyColor(0, 0), 1)).draw(&mut screen).unwrap();
-                    //draw the 4 values respectively in a scale (ie 0° to 600°)
+                //draw old diagram points as black
+                let d = diagram_data.peek();
+                //draw the 4 values respectively in a scale (ie 0° to 600°)
+                if d.is_some() {
+                    let d = d.unwrap();
                     Pixel(
-                        Point::new(i as i32 + 22, (218. - temp_data.set * 200. / 600.) as _),
-                        MyColor::from_rgb(0x0F, 0x1F, 0x0F),
+                        Point::new(i as i32 + 22, (218. - 380. * 200. / 600.) as _),
+                        MyColor::from_rgb(0, 0, 0),
                     )
                     .draw(&mut screen)
                     .unwrap();
                     Pixel(
                         Point::new(i as i32 + 22, (218 - d.0) as _),
-                        MyColor::from_rgb(0x1F, 0x3F, 0x1F),
+                        MyColor::from_rgb(0, 0, 0),
                     )
                     .draw(&mut screen)
                     .unwrap();
                     Pixel(
                         Point::new(i as i32 + 22, (218 - d.1) as _),
-                        MyColor::from_rgb(0x1F, 0, 0),
+                        MyColor::from_rgb(0, 0, 0),
                     )
                     .draw(&mut screen)
                     .unwrap();
                     Pixel(
                         Point::new(i as i32 + 22, (218 - d.2) as _),
-                        MyColor::from_rgb(0, 0x3F, 0),
+                        MyColor::from_rgb(0, 0, 0),
                     )
                     .draw(&mut screen)
                     .unwrap();
                     Pixel(
                         Point::new(i as i32 + 22, (218 - d.3) as _),
-                        MyColor::from_rgb(0, 0, 0x1F),
+                        MyColor::from_rgb(0, 0, 0),
                     )
                     .draw(&mut screen)
                     .unwrap();
-                });
+                }
+
+                //NOT WORKING!!
+                if diagram_data.len() == 276 {
+                    //info!("scroll: {}", i);
+                    screen.scroll(i);
+                } else {
+                    //info!("i: {}", i);
+                }
+
+                diagram_data.enqueue((
+                    (temp_data.temp * 200. / 600.) as u8,
+                    (temp_data.temp_p * 200. / 600.) as u8,
+                    (temp_data.temp_i * 200. / 600.) as u8,
+                    (temp_data.temp_d * 200. / 600.) as u8,
+                ));
+                let d = diagram_data.back().unwrap();
+                //data_clone.iter().map(|v| {
+                //draw black line at x for every y
+                //Line::new(Point::new(i as i32 +21,0), Point::new(i as i32 +20,240)).into_styled(PrimitiveStyle::with_stroke(ass_code::MyColor(0, 0), 1)).draw(&mut screen).unwrap();
+                //draw the 4 values respectively in a scale (ie 0° to 600°)
+                Pixel(
+                    Point::new(i as i32 + 22, (218. - temp_data.set * 200. / 600.) as _),
+                    MyColor::from_rgb(0x0F, 0x1F, 0x0F),
+                )
+                .draw(&mut screen)
+                .unwrap();
+                Pixel(
+                    Point::new(i as i32 + 22, (218 - d.0) as _),
+                    MyColor::from_rgb(0x1F, 0x3F, 0x1F),
+                )
+                .draw(&mut screen)
+                .unwrap();
+                Pixel(
+                    Point::new(i as i32 + 22, (218 - d.1) as _),
+                    MyColor::from_rgb(0x1F, 0, 0),
+                )
+                .draw(&mut screen)
+                .unwrap();
+                Pixel(
+                    Point::new(i as i32 + 22, (218 - d.2) as _),
+                    MyColor::from_rgb(0, 0x3F, 0),
+                )
+                .draw(&mut screen)
+                .unwrap();
+                Pixel(
+                    Point::new(i as i32 + 22, (218 - d.3) as _),
+                    MyColor::from_rgb(0, 0, 0x1F),
+                )
+                .draw(&mut screen)
+                .unwrap();
+                stop_watch.lap();
+            }
         }
         //let temp_data: TempData = unsafe { CHAN.receive().with_timeout(Duration::from_millis(100)).await.inspect(f) };
 
         //draw diagram data at an x coordinate
 
-        Timer::after_millis(10).await;
+        //Timer::after_millis(1).await;
     }
 }
 
@@ -425,6 +427,27 @@ async fn handle_touch_events(
         } else {
             counter += 1;
         }
+    }
+}
+
+struct StopWatch {
+    old_time: u64,
+}
+
+impl Default for StopWatch {
+    fn default() -> Self {
+        Self{
+            old_time: Instant::now().as_micros()
+        }
+    }
+
+}
+
+impl StopWatch {
+    fn lap(&mut self) {
+        let time_diff = Instant::now().as_micros() - self.old_time;
+            info!("time elapsed: {}", time_diff);
+        self.old_time = Instant::now().as_micros();
     }
 }
 /*
