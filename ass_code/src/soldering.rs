@@ -2,7 +2,7 @@ use core::fmt::Write;
 
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::{Channel, Sender};
-use embassy_time::Timer;
+use embassy_time::{Instant, Timer};
 use embedded_io::{Read, ReadReady};
 use embedded_storage::{ReadStorage, Storage};
 use esp_hal::gpio::GpioPin;
@@ -251,6 +251,7 @@ async fn solder_task(s: Soldering<ADC1>) {
         //using try_send, so that the thread isn't blocked when buffer gets full
         if s.sender
             .try_send(TempData {
+
                 set: set_temp as _,
                 temp: act_temp,
                 temp_p: pro_diff,
