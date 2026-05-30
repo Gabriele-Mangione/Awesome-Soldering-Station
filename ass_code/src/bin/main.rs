@@ -3,6 +3,7 @@
 
 extern crate alloc;
 use core::cell::RefCell;
+use core::cmp::min;
 
 use alloc::vec::Vec;
 use alloc::{format, vec};
@@ -169,7 +170,7 @@ async fn main(spawner: Spawner) {
     let ts_sda = peripherals.GPIO14;
     let ts_scl = peripherals.GPIO13;
     let ts_irq = peripherals.GPIO1;
-    spawner
+    /*spawner
         .spawn(handle_touch_events(
             ts_sda.into(),
             ts_scl.into(),
@@ -178,6 +179,7 @@ async fn main(spawner: Spawner) {
             peripherals.I2C1.into(),
         ))
         .unwrap();
+    */
 
     //touch circles
     //let mut balls: Vec<Circle> = vec![];
@@ -327,10 +329,10 @@ async fn main(spawner: Spawner) {
                     }
 
                     diagram_data.enqueue((
-                        (temp_data.temp * 200. / 600.) as u8,
-                        (temp_data.temp_p * 200. / 600.) as u8,
-                        (temp_data.temp_i * 200. / 600.) as u8,
-                        (temp_data.temp_d * 200. / 600.) as u8,
+                        min((temp_data.temp * 200. / 600.) as u8, 218),
+                        min((temp_data.temp_p * 200. / 600.) as u8, 218),
+                        min((temp_data.temp_i * 200. / 600.) as u8, 218),
+                        min((temp_data.temp_d * 200. / 600.) as u8, 218),
                     ));
                     let d = diagram_data.back().unwrap();
                     //data_clone.iter().map(|v| {

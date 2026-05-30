@@ -26,6 +26,8 @@ use esp_storage::FlashStorage;
 use log::{debug, info, trace, warn};
 use ringbuffer::{AllocRingBuffer, ConstGenericRingBuffer, RingBuffer};
 
+use crate::comm::Comm;
+
 pub struct Soldering<ADCI>
 where
     ADCI: adc::RegisterAccess + Peripheral,
@@ -122,7 +124,8 @@ async fn solder_task(s: Soldering<ADC1>) {
     //read response
     //set cable_connected flag
 
-    let mut cable_connected: bool = comm::pulse_check();
+            //TODO: implement comm task (before calling pulse check)
+    let mut cable_connected: bool = false;//Comm::pulse_check().await;
     /*
         if buf[0] == b'y' {
             //confirmed connection
@@ -166,6 +169,7 @@ async fn solder_task(s: Soldering<ADC1>) {
 
     loop {
         if cable_connected == false {
+            /*
             u.write_char('?').expect("uart write fail");
             //info!("sending pulse check");
 
@@ -181,12 +185,16 @@ async fn solder_task(s: Soldering<ADC1>) {
             //confirmed connection
             cable_connected = true;
             //info!("response was 'y'");
+            */
+            //TODO: implement comm task (before calling pulse check)
+            //cable_connected = Comm::pulse_check().await;
 
             //write gyro settings
             let mut gyro_settings = [0u8; 2];
             flash.read(0x9010, &mut gyro_settings).unwrap();
-            u.write_bytes(&gyro_settings)
-                .expect("uart write gyro settings fail");
+            //TODO: comm::send_gyro_settings?
+            //u.write_bytes(&gyro_settings)
+            //    .expect("uart write gyro settings fail");
         }
         Timer::after_millis(1).await;
         //turn off voltage for measurement

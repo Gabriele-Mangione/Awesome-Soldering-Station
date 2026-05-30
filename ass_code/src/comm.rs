@@ -19,9 +19,10 @@ pub struct Comm {
 }
 
 impl Comm {
-    async fn pulse_check() -> bool {
+    pub async fn pulse_check() -> bool {
         critical_section::with(|cs| {
-            let mut u = UART.borrow_ref_mut(cs).as_mut().unwrap();
+            let mut binding = UART.borrow_ref_mut(cs);
+            let mut u = binding.as_mut().unwrap();
             u.write_char('?').expect("uart write fail");
             let mut buf = [0u8; 1];
         });
