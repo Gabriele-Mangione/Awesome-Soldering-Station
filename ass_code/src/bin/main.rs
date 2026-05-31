@@ -55,16 +55,15 @@ async fn main(spawner: Spawner) {
     let pdo_vec: Vec<fusb302::PDO>;
 
     let mut pdo_requested = false;
-    log::info!("init fusb!");
+    //log::info!("init fusb!");
     let mut fusb = fusb302::Fusb::new(
         peripherals.GPIO5.into(),
         peripherals.GPIO4.into(),
         peripherals.I2C0,
         0x22,
     );
-    log::info!("scan pds!");
+    //log::info!("scan pds!");
     pdo_vec = fusb.scan_pds().await.unwrap();
-    log::info!("request pdo!");
     if pdo_vec.len() > 0 {
         let found_pdo = pdo_vec.iter().find(|&&x| x.voltage == 9000);
         if found_pdo.is_some() {
@@ -72,7 +71,7 @@ async fn main(spawner: Spawner) {
             pdo_requested = true;
         }
     }
-    log::info!("done");
+    log::info!("request pdo!");
 
     //for some reason necessary when using reg write for pins. DON'T DELETE
     Output::new(peripherals.GPIO35, Level::Low);
@@ -286,7 +285,7 @@ async fn main(spawner: Spawner) {
                         let next_col = iter
                             .peek()
                             .map(|(_, b)| **b)
-                            .unwrap_or((255, 255, 255, 255));
+                            .unwrap_or((0, 0, 0, 0));
 
                         Pixel(
                             Point::new(i as i32 + 22, (218. - temp_data.set * 200. / 600.) as _),
@@ -351,7 +350,7 @@ async fn main(spawner: Spawner) {
                             .unwrap();
                             Pixel(
                                 Point::new(i as i32 + 22, (218 - next_col.3) as _),
-                                MyColor::from_rgb(0, 0x3F, 0),
+                                MyColor::from_rgb(0, 0, 0x1F),
                             )
                             .draw(&mut screen)
                             .unwrap();
@@ -360,12 +359,16 @@ async fn main(spawner: Spawner) {
                         break;
                     }
                 }
+                let s = format!("T: {:3}", temp_data.temp);
+    Text::new(&s, Point::new(240, 200), style)
+        .draw(&mut screen)
+        .unwrap();
 
                 diagram_data.enqueue((
-                    (temp_data.temp * 200. / 600.) as u8,
-                    (temp_data.temp_p * 200. / 600.) as u8,
-                    (temp_data.temp_i * 200. / 600.) as u8,
-                    (temp_data.temp_d * 200. / 600.) as u8,
+                    min((temp_data.temp * 200. / 600.) as u8,218),
+                    min((temp_data.temp_p * 200. / 600.) as u8,218),
+                    min((temp_data.temp_i * 200. / 600.) as u8,218),
+                    min((temp_data.temp_d * 200. / 600.) as u8,218),
                 ));
 
                 for (i, d) in diagram_data.iter().enumerate() {

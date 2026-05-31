@@ -139,9 +139,9 @@ async fn solder_task(s: Soldering<ADC1>) {
     //2. drive ki up to the point where the temp is stable at the set temp. (there will be an
     //   overshoot where the first peak was
     //3. adjust kd to flatten the overshoot
-    let kp: f32 = 0.8;
+    let kp: f32 = 10.;
     let ki: f32 = 0.005;
-    let kd: f32 = 0.5;
+    let kd: f32 = 0.;
     let mut old_diff: f32 = 0.;
     let mut int_diff: f32 = 0.;
 
@@ -152,7 +152,7 @@ async fn solder_task(s: Soldering<ADC1>) {
     flash.read(0x9000, &mut bytes).unwrap();
 
     //if flash has never been set, ig new device
-    if bytes[1] == 0 && bytes[0] == 0 {
+    if true { //bytes[1] == 0 && bytes[0] == 0 {
         // == 0xff?
         //todo change these values to standard ones
         flash.write(0x9000, &[0x02, 0xC2, 0x0B, 0x08]).unwrap(); //706 at 100° & 2824 at 400°
@@ -160,8 +160,8 @@ async fn solder_task(s: Soldering<ADC1>) {
     }
 
     //todo convert 2bytes to u16...
-    let p_at_100c: u16 = ((bytes[0] as u16) << 8) | bytes[1] as u16;
-    let p_at_400c: u16 = ((bytes[2] as u16) << 8) | bytes[3] as u16;
+    let p_at_100c: u16 = ((bytes[0] as u16) << 8) + bytes[1] as u16;
+    let p_at_400c: u16 = ((bytes[2] as u16) << 8) + bytes[3] as u16;
     info!("p @ 100°C: {:5}, p @ 400°C: {:5}", p_at_100c, p_at_400c);
 
     let mut adc_ring = ConstGenericRingBuffer::<u16, 64>::new();
@@ -195,12 +195,14 @@ async fn solder_task(s: Soldering<ADC1>) {
             //TODO: comm::send_gyro_settings?
             //u.write_bytes(&gyro_settings)
             //    .expect("uart write gyro settings fail");
+            int_diff = 0.;
+            old_diff = 0.;
         }
         Timer::after_millis(1).await;
         //turn off voltage for measurement
         solder_pin.set_duty_hw(0);
         //wait for voltage stabilisation
-        Timer::after_micros(100).await;
+        Timer::after_millis(1).await;
 
         //read adc temperature pin with rb
         for _ in 0..10 {
@@ -210,18 +212,16 @@ async fn solder_task(s: Soldering<ADC1>) {
         let avg_adc_val: u16 = (avg_adc_val >> 6) as u16; //shifting instead of dividing to
                                                           //optimise speed
 
-        //todo: check if soldering handle is connected f.i. via reading data lines
-
         if avg_adc_val > 4000 {
             //no soldering tip is connected
             int_diff = 0.;
             old_diff = 0.;
-            continue;
+            //continue;
         }
 
         //convert adc value to celcius
         let act_temp: f32 =
-            300. / (p_at_400c - p_at_100c) as f32 * (avg_adc_val - p_at_100c) as f32 + 100.;
+            300. / (p_at_400c - p_at_100c) as f32 * (avg_adc_val as f32 - p_at_100c as f32) + 100.;
 
         //(PID)
         let diff: f32 = set_temp as f32 - act_temp;
@@ -234,8 +234,8 @@ async fn solder_task(s: Soldering<ADC1>) {
         old_diff = diff;
 
         //adjust output duty cycle
-        let duty_cycle: u16 = ((pro_diff + int_diff + der_diff) as u16).clamp(0, 16384);
-        //solder_pin.set_duty_hw(duty_cycle as u32);
+        let duty_cycle: u16 = ((pro_diff + int_diff + der_diff) as u16).clamp(0, 4096);
+        solder_pin.set_duty_hw(duty_cycle as u32);
 
         /*
         info!(

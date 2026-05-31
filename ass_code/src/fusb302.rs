@@ -13,14 +13,16 @@ pub struct PDO {
     pub id: u8,
     pub voltage: u16,
     pub current: u16,
+    pub message_id: u8,
 }
 
 impl PDO {
-    fn from(data: &[u8; 4], id: u8) -> Self {
+    fn from(data: &[u8; 4], id: u8, message_id: u8) -> Self {
         Self {
             id,
             voltage: ((((data[2] as u16 & 0x0F) << 6) | ((data[1] as u16 >> 2) & 0x3F)) * 50),
             current: ((((data[1] as u16 & 0x03) << 8) | data[0] as u16) * 10),
+            message_id
         }
     }
 }
@@ -89,8 +91,8 @@ impl Fusb<'_> {
 
         //return Ok(pdo_vec);
         //set auto crc separately (voltage goes to 0 if done together with previous)
-        //switches1 |= 0x04;
-        //self.write_reg(0x03, switches1)?; //CRASHES HERE!!!!
+        switches1 |= 0x04;
+        self.write_reg(0x03, switches1)?; //CRASHES HERE!!!!
         //return Ok(pdo_vec);
 
         // Control0: flush FIFO TX buffer
@@ -125,12 +127,13 @@ impl Fusb<'_> {
         let message_size: u8 = (header_sops[2] >> 4) & 0x07;
         //let mut pdo: PDO = PDO::from(&[0u8;4]);
         //let mut index_pdo: u8 = 255;
+        let message_id : u8 = (header_sops[2] >> 1) & 0x07;
 
         for i in 0..message_size {
             let mut bmc_data: [u8; 4] = [0u8; 4];
             self.read_bmc(&mut bmc_data)?;
             //pdo = PDO::from(&bmc_data);
-            pdo_vec.push(PDO::from(&bmc_data, i));
+            pdo_vec.push(PDO::from(&bmc_data, i, message_id));
 
             /*
             if pdo.voltage == voltage_mV {
@@ -159,7 +162,7 @@ impl Fusb<'_> {
         let max_current_bits: u16 = max_current_milliampere / 10;
         let current_bits: u16 = current_milliampere / 10;
 
-        let message_id: u8 = 0;
+        let message_id: u8 = (pdo.message_id + 1) % 8;
 
         let bmc: &[u8] = &[
             //sop
@@ -173,7 +176,7 @@ impl Fusb<'_> {
             0x10 | ((message_id & 0x07) << 1),
             max_current_bits as u8,
             ((max_current_bits >> 8) & 0x03) as u8 | ((current_bits << 2) & 0xFC) as u8,
-            (current_bits >> 6) as u8,
+            ((current_bits & 0x3C0) >> 6) as u8,
             ((pdo.id + 1) << 4) | 0x01,
             //eop
             0xff, 
