@@ -116,11 +116,6 @@ async fn main(spawner: Spawner) {
             .draw(&mut screen)
             .unwrap();
     }
-    log::info!("init touch!");
-
-    Text::new("This is a text", Point::new(50, 50), style)
-        .draw(&mut screen)
-        .unwrap();
 
     //developing handle code
     /*
@@ -149,6 +144,7 @@ async fn main(spawner: Spawner) {
     }
     */
 
+    log::info!("init soldering!");
     static mut CHAN: Channel<NoopRawMutex, TempData, 3> =
         Channel::<NoopRawMutex, TempData, 3>::new();
 
@@ -167,6 +163,7 @@ async fn main(spawner: Spawner) {
 
     spawner.spawn(soldering.task()).unwrap();
 
+    log::info!("init touch!");
     let ts_sda = peripherals.GPIO14;
     let ts_scl = peripherals.GPIO13;
     let ts_irq = peripherals.GPIO1;
@@ -282,10 +279,7 @@ async fn main(spawner: Spawner) {
                 let mut iter = diagram_data.iter().enumerate().peekable();
                 loop {
                     if let Some((i, current_col)) = iter.next() {
-                        let next_col = iter
-                            .peek()
-                            .map(|(_, b)| **b)
-                            .unwrap_or((0, 0, 0, 0));
+                        let next_col = iter.peek().map(|(_, b)| **b).unwrap_or((0, 0, 0, 0));
 
                         Pixel(
                             Point::new(i as i32 + 22, (218. - temp_data.set * 200. / 600.) as _),
@@ -360,15 +354,15 @@ async fn main(spawner: Spawner) {
                     }
                 }
                 let s = format!("T: {:3}", temp_data.temp);
-    Text::new(&s, Point::new(240, 200), style)
-        .draw(&mut screen)
-        .unwrap();
+                Text::new(&s, Point::new(240, 200), style)
+                    .draw(&mut screen)
+                    .unwrap();
 
                 diagram_data.enqueue((
-                    min((temp_data.temp * 200. / 600.) as u8,218),
-                    min((temp_data.temp_p * 200. / 600.) as u8,218),
-                    min((temp_data.temp_i * 200. / 600.) as u8,218),
-                    min((temp_data.temp_d * 200. / 600.) as u8,218),
+                    min((temp_data.temp * 200. / 600.) as u8, 218),
+                    min((temp_data.temp_p * 200. / 600.) as u8, 218),
+                    min((temp_data.temp_i * 200. / 600.) as u8, 218),
+                    min((temp_data.temp_d * 200. / 600.) as u8, 218),
                 ));
 
                 for (i, d) in diagram_data.iter().enumerate() {
