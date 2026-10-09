@@ -155,7 +155,7 @@ async fn solder_task(s: Soldering<ADC1>) {
     if true { //bytes[1] == 0 && bytes[0] == 0 {
         // == 0xff?
         //todo change these values to standard ones
-        flash.write(0x9000, &[0x02, 0xC2, 0x0B, 0x08]).unwrap(); //706 at 100° & 2824 at 400°
+        flash.write(0x9000, &[0x02, 0x35, 0x0A, 0x7B]).unwrap(); //565 at 100° & 2683 at 400°
         flash.read(0x9000, &mut bytes).unwrap();
     }
 
@@ -198,7 +198,7 @@ async fn solder_task(s: Soldering<ADC1>) {
             int_diff = 0.;
             old_diff = 0.;
         }
-        Timer::after_millis(1).await;
+        //Timer::after_millis(1).await;
         //turn off voltage for measurement
         solder_pin.set_duty_hw(0);
         //wait for voltage stabilisation
@@ -209,7 +209,7 @@ async fn solder_task(s: Soldering<ADC1>) {
             adc_ring.enqueue(adc.read_blocking(&mut tmp_pin));
         }
         let avg_adc_val: u32 = adc_ring.iter().map(|&x| x as u32).sum();
-        let avg_adc_val: u16 = (avg_adc_val >> 6) as u16; //shifting instead of dividing to
+        let avg_adc_val: u16 = (avg_adc_val >> 6) as u16; //shifting instead of dividing by 64 to
                                                           //optimise speed
 
         if avg_adc_val > 4000 {
@@ -263,6 +263,9 @@ async fn solder_task(s: Soldering<ADC1>) {
         {
             //warn!("sent temperatures error: channel buffer is full");
         }
+
+            //wait so tip can heat up
+        Timer::after_millis(5).await;
     }
 }
 
