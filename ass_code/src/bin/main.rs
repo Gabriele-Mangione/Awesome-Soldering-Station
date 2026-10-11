@@ -212,10 +212,13 @@ async fn main(spawner: Spawner) {
         .draw(&mut screen)
         .unwrap();
 
-    Rectangle::new(Point::new(22, 20), Size::new(diagram_data.len() as _, 200))
-        .into_styled(PrimitiveStyle::with_fill(ass_code::MyColor(0, 0)))
-        .draw(&mut screen)
-        .unwrap();
+    Rectangle::new(
+        Point::new(22, 20),
+        Size::new(diagram_data.capacity() as _, 200),
+    )
+    .into_styled(PrimitiveStyle::with_fill(ass_code::MyColor(0, 0)))
+    .draw(&mut screen)
+    .unwrap();
 
     //setup vert scrolling
     screen.vertical_scrolling(20, 300, 20);

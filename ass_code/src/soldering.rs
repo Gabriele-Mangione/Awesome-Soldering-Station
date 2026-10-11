@@ -100,7 +100,7 @@ async fn solder_task(s: Soldering<ADC1>) {
         .configure(timer::config::Config {
             duty: timer::config::Duty::Duty14Bit, //0- 16384
             clock_source: timer::LSClockSource::APBClk,
-            frequency: RateExtU32::Hz(500),
+            frequency: RateExtU32::Hz(2000),
         })
         .unwrap();
 
@@ -125,7 +125,7 @@ async fn solder_task(s: Soldering<ADC1>) {
     //set cable_connected flag
 
             //TODO: implement comm task (before calling pulse check)
-    let mut cable_connected: bool = false;//Comm::pulse_check().await;
+    let mut cable_connected: bool = true;//Comm::pulse_check().await;
     /*
         if buf[0] == b'y' {
             //confirmed connection
@@ -139,8 +139,8 @@ async fn solder_task(s: Soldering<ADC1>) {
     //2. drive ki up to the point where the temp is stable at the set temp. (there will be an
     //   overshoot where the first peak was
     //3. adjust kd to flatten the overshoot
-    let kp: f32 = 10.;
-    let ki: f32 = 0.005;
+    let kp: f32 = 500.;
+    let ki: f32 = 0.00;
     let kd: f32 = 0.;
     let mut old_diff: f32 = 0.;
     let mut int_diff: f32 = 0.;
@@ -229,12 +229,13 @@ async fn solder_task(s: Soldering<ADC1>) {
         let pro_diff = diff * kp;
         //integral
         int_diff += diff * ki;
+        int_diff = int_diff.clamp(-5000., 5000.);
         //derivative
         let der_diff = (diff - old_diff) * kd;
         old_diff = diff;
 
         //adjust output duty cycle
-        let duty_cycle: u16 = ((pro_diff + int_diff + der_diff) as u16).clamp(0, 4096);
+        let duty_cycle: u16 = ((pro_diff + int_diff + der_diff) as u16).clamp(0, 16384);
         solder_pin.set_duty_hw(duty_cycle as u32);
 
         /*
@@ -255,9 +256,9 @@ async fn solder_task(s: Soldering<ADC1>) {
 
                 set: set_temp as _,
                 temp: act_temp,
-                temp_p: pro_diff,
-                temp_i: int_diff,
-                temp_d: der_diff,
+                temp_p: pro_diff / kp,
+                temp_i: int_diff / ki,
+                temp_d: der_diff / kd,
             })
             .is_err()
         {
@@ -265,7 +266,7 @@ async fn solder_task(s: Soldering<ADC1>) {
         }
 
             //wait so tip can heat up
-        Timer::after_millis(5).await;
+        Timer::after_millis(50).await;
     }
 }
 
