@@ -7,6 +7,7 @@ use embassy_sync::channel::{Channel, Sender};
 use embassy_time::{Instant, Timer};
 use embedded_io::{Read, ReadReady};
 use embedded_storage::{ReadStorage, Storage};
+use esp_hal::analog::adc::AdcCalBasic;
 use esp_hal::gpio::GpioPin;
 use esp_hal::interrupt::InterruptConfigurable;
 use esp_hal::time::RateExtU32;
@@ -98,9 +99,9 @@ async fn solder_task(s: Soldering<ADC1>) {
     let mut ledc_timer = ledc.timer::<LowSpeed>(Number::Timer0);
     ledc_timer
         .configure(timer::config::Config {
-            duty: timer::config::Duty::Duty14Bit, //0- 16384
+            duty: timer::config::Duty::Duty11Bit, //0- 16384
             clock_source: timer::LSClockSource::APBClk,
-            frequency: RateExtU32::Hz(2000),
+            frequency: RateExtU32::Hz(100),
         })
         .unwrap();
 
@@ -114,7 +115,7 @@ async fn solder_task(s: Soldering<ADC1>) {
         .unwrap();
 
     let mut adc_config = AdcConfig::new();
-    let mut tmp_pin = adc_config.enable_pin(s.tmp_pin, esp_hal::analog::adc::Attenuation::_11dB);
+    let mut tmp_pin = adc_config.enable_pin_with_cal::<_, AdcCalBasic<_>>(s.tmp_pin, esp_hal::analog::adc::Attenuation::_11dB);
     let mut adc = Adc::new(s.adc_peripheral, adc_config);
 
     adc.read_blocking(&mut tmp_pin);
@@ -139,8 +140,8 @@ async fn solder_task(s: Soldering<ADC1>) {
     //2. drive ki up to the point where the temp is stable at the set temp. (there will be an
     //   overshoot where the first peak was
     //3. adjust kd to flatten the overshoot
-    let kp: f32 = 500.;
-    let ki: f32 = 0.00;
+    let kp: f32 = 20.;
+    let ki: f32 = 0.1;
     let kd: f32 = 0.;
     let mut old_diff: f32 = 0.;
     let mut int_diff: f32 = 0.;
@@ -164,7 +165,7 @@ async fn solder_task(s: Soldering<ADC1>) {
     let p_at_400c: u16 = ((bytes[2] as u16) << 8) + bytes[3] as u16;
     info!("p @ 100°C: {:5}, p @ 400°C: {:5}", p_at_100c, p_at_400c);
 
-    let mut adc_ring = ConstGenericRingBuffer::<u16, 64>::new();
+    let mut adc_ring = ConstGenericRingBuffer::<u16, 256>::new();
     //let mut act_temp:f32 = 0.;
 
     loop {
@@ -202,14 +203,15 @@ async fn solder_task(s: Soldering<ADC1>) {
         //turn off voltage for measurement
         solder_pin.set_duty_hw(0);
         //wait for voltage stabilisation
-        Timer::after_millis(1).await;
+        Timer::after_micros(100).await;
 
         //read adc temperature pin with rb
-        for _ in 0..10 {
+        for _ in 0..100 {
             adc_ring.enqueue(adc.read_blocking(&mut tmp_pin));
+            Timer::after_micros(10).await;
         }
         let avg_adc_val: u32 = adc_ring.iter().map(|&x| x as u32).sum();
-        let avg_adc_val: u16 = (avg_adc_val >> 6) as u16; //shifting instead of dividing by 64 to
+        let avg_adc_val: u16 = (avg_adc_val >> 8) as u16; //shifting instead of dividing by 64 to
                                                           //optimise speed
 
         if avg_adc_val > 4000 {
@@ -222,6 +224,7 @@ async fn solder_task(s: Soldering<ADC1>) {
         //convert adc value to celcius
         let act_temp: f32 =
             300. / (p_at_400c - p_at_100c) as f32 * (avg_adc_val as f32 - p_at_100c as f32) + 100.;
+        //info!("act_temp: {}, avg_adc_val: {}, adc_ring: {}",act_temp,avg_adc_val,adc_ring.back().unwrap());
 
         //(PID)
         let diff: f32 = set_temp as f32 - act_temp;
@@ -229,13 +232,13 @@ async fn solder_task(s: Soldering<ADC1>) {
         let pro_diff = diff * kp;
         //integral
         int_diff += diff * ki;
-        int_diff = int_diff.clamp(-5000., 5000.);
+        int_diff = int_diff.clamp(-500., 500.);
         //derivative
         let der_diff = (diff - old_diff) * kd;
         old_diff = diff;
 
         //adjust output duty cycle
-        let duty_cycle: u16 = ((pro_diff + int_diff + der_diff) as u16).clamp(0, 16384);
+        let duty_cycle: u16 = ((pro_diff + int_diff + der_diff) as u16).clamp(0, 2_u16.pow(11)-1);
         solder_pin.set_duty_hw(duty_cycle as u32);
 
         /*
@@ -257,8 +260,8 @@ async fn solder_task(s: Soldering<ADC1>) {
                 set: set_temp as _,
                 temp: act_temp,
                 temp_p: pro_diff / kp,
-                temp_i: int_diff / ki,
-                temp_d: der_diff / kd,
+                temp_i: int_diff,
+                temp_d: der_diff,
             })
             .is_err()
         {

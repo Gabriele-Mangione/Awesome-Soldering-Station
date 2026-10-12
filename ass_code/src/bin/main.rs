@@ -221,7 +221,7 @@ async fn main(spawner: Spawner) {
     .unwrap();
 
     //setup vert scrolling
-    screen.vertical_scrolling(20, 300, 20);
+    //screen.vertical_scrolling(20, 300, 20);
 
     let mut dont_repeat_flag = false;
     //let mut data_clone = diagram_data.clone().into_iter();
